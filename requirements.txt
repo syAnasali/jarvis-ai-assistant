@@ -1,0 +1,16 @@
+ollama
+faster-whisper
+silero-vad
+kokoro
+sounddevice
+soundfile
+numpy
+PySide6
+sqlalchemy
+pydantic
+pydantic-settings
+loguru
+python-dotenv
+pytest
+ruff
+pyinstaller

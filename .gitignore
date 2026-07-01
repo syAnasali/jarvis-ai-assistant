@@ -1,0 +1,64 @@
+# Python cache
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+
+# Virtual environments
+.venv/
+venv/
+env/
+
+# IDE files
+.vscode/
+.idea/
+*.swp
+*.swo
+.python-version
+
+# Logs
+logs/*
+!logs/.gitkeep
+*.log
+
+# Databases
+*.db
+*.sqlite
+data/*.db
+data/*.sqlite
+
+# Machine learning models (local model weights)
+*.onnx
+*.bin
+*.pt
+*.pth
+*.gguf
+
+# Build artifacts
+build/
+dist/
+*.egg-info/
+
+# PyInstaller output
+*.spec
+
+# Environment configuration
+.env
+.env.local
+
+# Coverage reports
+.coverage
+htmlcov/
+coverage.xml
+
+# Temporary files
+*.tmp
+*~
+.ipynb_checkpoints/
+
+# OS-specific files
+.DS_Store
+Thumbs.db

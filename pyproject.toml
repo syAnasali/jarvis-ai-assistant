@@ -1,0 +1,22 @@
+[project]
+name = "jarvis-ai-assistant"
+version = "0.1.0"
+description = "Production-grade Desktop AI Assistant built using Python and local LLMs."
+requires-python = ">=3.13"
+authors = [
+    { name = "Author Name", email = "author@example.com" }
+]
+dependencies = []
+
+[tool.ruff]
+line-length = 88
+target-version = "py313"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "N", "UP", "B", "A", "C4", "SIM", "ARG"]
+ignore = []
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+python_files = ["test_*.py"]
+python_functions = ["test_*"]
