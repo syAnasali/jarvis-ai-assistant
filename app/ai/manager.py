@@ -22,6 +22,17 @@ class LLMManager:
         """
         self._providers[name] = provider
 
+    def remove_provider(self, name: str) -> None:
+        """Removes a registered LLM provider.
+
+        Args:
+            name: Name of the provider to remove.
+        """
+        if name in self._providers:
+            del self._providers[name]
+        if self._active_provider_name == name:
+            self._active_provider_name = None
+
     def switch_provider(self, name: str) -> None:
         """Switches the active provider to the registered provider.
 
@@ -51,6 +62,25 @@ class LLMManager:
                 active.initialize()
             except Exception as e:
                 raise LLMError(f"Failed to initialize provider '{name}': {e}") from e
+
+    def reload_provider(self, name: str) -> None:
+        """Re-initializes a registered provider.
+
+        Args:
+            name: Name of the provider to reload.
+
+        Raises:
+            LLMError: If re-initialization fails.
+            KeyError: If the provider is not registered.
+        """
+        if name not in self._providers:
+            raise KeyError(f"Provider '{name}' is not registered.")
+        provider = self._providers[name]
+        try:
+            provider.shutdown()
+            provider.initialize()
+        except Exception as e:
+            raise LLMError(f"Failed to reload provider '{name}': {e}") from e
 
     @property
     def active_provider(self) -> BaseLLMProvider | None:

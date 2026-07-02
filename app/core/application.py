@@ -8,6 +8,9 @@ from app.core.exceptions import ApplicationStartupError
 from app.core.constants import DATA_DIR, LOG_DIR, CONFIG_DIR
 from app.config.settings import settings
 from app.core.logger import JarvisLogger
+from app.utils.banner import render_startup_banner, render_shutdown_banner
+
+logger = JarvisLogger.get_logger("application")
 
 
 class Application:
@@ -66,85 +69,10 @@ class Application:
         self.logger.info("Starting main runtime process...")
 
         try:
-            # 1. Initialize LLMManager and register OllamaProvider
-            from app.ai.manager import LLMManager
-            from app.ai.providers.ollama import OllamaProvider
-            
-            llm_manager = LLMManager()
-            ollama_provider = OllamaProvider(host=settings.ollama_host, model=settings.ollama_model)
-            llm_manager.register_provider("ollama", ollama_provider)
-            llm_manager.load_provider("ollama")
-            
-            self.container.register("llm_manager", llm_manager)
-
-            # 2. Initialize Agent components and AgentController
-            from app.agent.conversation import Conversation
-            from app.agent.context import ContextManager
-            from app.agent.controller import AgentController
-
-            conversation = Conversation()
-            context_manager = ContextManager()
-            controller = AgentController(
-                conversation=conversation,
-                context_manager=context_manager,
-                llm_manager=llm_manager
-            )
-            self.container.register("controller", controller)
-
-            # 3. Print professional startup banner
-            print("==================================================")
-            print(f"Application: {settings.app_name}")
-            print(f"Version:     {settings.app_version}")
-            print(f"Provider:    ollama")
-            print(f"Model:       {settings.ollama_model}")
-            print("Status:      Ready")
-            print("==================================================")
-            print("Type 'exit', 'quit', or 'bye' to end the session.")
-            print()
-
-            # 4. Terminal chat loop
-            import uuid
-            from datetime import datetime, timezone
-            from app.agent.models import AgentRequest
-            from app.core.exceptions import LLMError
-
-            while self.state == ApplicationState.RUNNING:
-                try:
-                    user_input = input("You > ").strip()
-                except (KeyboardInterrupt, EOFError):
-                    print("\nSession interrupted.")
-                    break
-
-                if not user_input:
-                    continue
-
-                if user_input.lower() in ("exit", "quit", "bye"):
-                    print("Exiting chat session.")
-                    break
-
-                # Create AgentRequest object
-                request = AgentRequest(
-                    request_id=f"req_{uuid.uuid4().hex[:8]}",
-                    text=user_input,
-                    source="terminal",
-                    timestamp=datetime.now(timezone.utc),
-                    metadata={}
-                )
-
-                try:
-                    # Process request
-                    response = controller.process_request(request)
-                    print(f"Jarvis > {response.text}")
-                    print()
-                except LLMError as le:
-                    self.logger.error(f"LLM Error: {le}")
-                    print(f"Jarvis > [Error] Failed to communicate with model: {le}")
-                    print()
-                except Exception as e:
-                    self.logger.error(f"Unexpected error processing request: {e}")
-                    print(f"Jarvis > [Error] An unexpected error occurred: {e}")
-                    print()
-
+            self._initialize_llm()
+            self._initialize_agent()
+            render_startup_banner()
+            self._run_chat_loop()
         except Exception as e:
             self.state = ApplicationState.ERROR
             self.logger.critical(f"Application crash during main loop: {e}")
@@ -160,15 +88,7 @@ class Application:
         self.state = ApplicationState.STOPPING
         self.logger.info("Shutting down core services...")
 
-        # Shutdown active LLM provider if registered
-        try:
-            if self.container.has("llm_manager"):
-                llm_manager = self.container.get("llm_manager")
-                active = llm_manager.active_provider
-                if active:
-                    active.shutdown()
-        except Exception as e:
-            self.logger.error(f"Error shutting down LLM provider: {e}")
+        self._shutdown_services()
 
         self.state = ApplicationState.STOPPED
         self.logger.info("Application shutdown complete.")
@@ -195,3 +115,85 @@ class Application:
             "settings": "loaded" if settings_loaded else "missing",
             "directories": "verified" if dirs_ok else "unverified"
         }
+
+    def _initialize_llm(self) -> None:
+        """Sets up the LLMManager and registers the default OllamaProvider."""
+        from app.ai.manager import LLMManager
+        from app.ai.providers.ollama import OllamaProvider
+        
+        llm_manager = LLMManager()
+        ollama_provider = OllamaProvider(host=settings.ollama_host, model=settings.ollama_model)
+        llm_manager.register_provider("ollama", ollama_provider)
+        llm_manager.load_provider("ollama")
+        
+        self.container.register("llm_manager", llm_manager)
+
+    def _initialize_agent(self) -> None:
+        """Instantiates the Conversation, ContextManager, and AgentController."""
+        from app.agent.conversation import Conversation
+        from app.agent.context import ContextManager
+        from app.agent.controller import AgentController
+
+        conversation = Conversation()
+        context_manager = ContextManager()
+        controller = AgentController(
+            conversation=conversation,
+            context_manager=context_manager,
+            llm_manager=self.container.get("llm_manager")
+        )
+        self.container.register("controller", controller)
+
+    def _run_chat_loop(self) -> None:
+        """Runs the interactive terminal CLI chat session loop."""
+        from app.agent.models import AgentRequest
+        from app.core.exceptions import LLMError
+        from app.utils.id_generator import generate_request_id
+        from datetime import datetime, timezone
+
+        controller = self.container.get("controller")
+
+        while self.state == ApplicationState.RUNNING:
+            try:
+                user_input = input("You > ").strip()
+            except (KeyboardInterrupt, EOFError):
+                print("\nSession interrupted.")
+                break
+
+            if not user_input:
+                continue
+
+            if user_input.lower() in ("exit", "quit", "bye"):
+                render_shutdown_banner()
+                break
+
+            request = AgentRequest(
+                request_id=generate_request_id(),
+                text=user_input,
+                source="terminal",
+                timestamp=datetime.now(timezone.utc),
+                metadata={}
+            )
+
+            try:
+                response = controller.process_request(request)
+                print(f"Jarvis > {response.text}")
+                print()
+            except LLMError as le:
+                self.logger.error(f"LLM Error: {le}")
+                print(f"Jarvis > [Error] Failed to communicate with model: {le}")
+                print()
+            except Exception as e:
+                self.logger.error(f"Unexpected error processing request: {e}")
+                print(f"Jarvis > [Error] An unexpected error occurred: {e}")
+                print()
+
+    def _shutdown_services(self) -> None:
+        """Shuts down all active registered background connections."""
+        try:
+            if self.container.has("llm_manager"):
+                llm_manager = self.container.get("llm_manager")
+                active = llm_manager.active_provider
+                if active:
+                    active.shutdown()
+        except Exception as e:
+            self.logger.error(f"Error shutting down LLM provider: {e}")
