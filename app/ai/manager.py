@@ -1,7 +1,8 @@
 """Manager for registering and coordinating active LLM providers."""
 
-from typing import Dict, Any
+from typing import Dict, Any, List
 from app.ai.interfaces import BaseLLMProvider
+from app.core.exceptions import LLMError
 
 
 class LLMManager:
@@ -34,6 +35,28 @@ class LLMManager:
             raise KeyError(f"Provider '{name}' is not registered.")
         self._active_provider_name = name
 
+    def load_provider(self, name: str) -> None:
+        """Switches to the specified provider and initializes it.
+
+        Args:
+            name: Name of the registered provider.
+
+        Raises:
+            LLMError: If initialization fails.
+        """
+        self.switch_provider(name)
+        active = self.active_provider
+        if active:
+            try:
+                active.initialize()
+            except Exception as e:
+                raise LLMError(f"Failed to initialize provider '{name}': {e}") from e
+
+    @property
+    def active_provider(self) -> BaseLLMProvider | None:
+        """Retrieves the active LLM provider instance."""
+        return self.get_active_provider()
+
     def get_active_provider(self) -> BaseLLMProvider | None:
         """Retrieves the currently active provider instance.
 
@@ -57,6 +80,28 @@ class LLMManager:
             KeyError: If the provider is not registered.
         """
         return self._providers[name]
+
+    def generate(
+        self,
+        messages: List[Dict[str, Any]],
+        options: Dict[str, Any] | None = None
+    ) -> Any:
+        """Delegates generation to the active provider.
+
+        Args:
+            messages: Formatted message payload dictionaries.
+            options: Optional runtime options.
+
+        Returns:
+            Any: Raw provider output.
+
+        Raises:
+            LLMError: If no provider is active or generation fails.
+        """
+        active = self.active_provider
+        if not active:
+            raise LLMError("No active LLM provider has been loaded.")
+        return active.generate(messages, options)
 
     def health_check(self) -> Dict[str, Any]:
         """Aggregates health diagnostics for all registered providers.
