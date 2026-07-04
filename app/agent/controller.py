@@ -12,6 +12,8 @@ from app.ai.formatter import MessageFormatter
 from app.ai.parser import ResponseParser
 from app.core.logger import JarvisLogger
 from app.utils.id_generator import generate_message_id
+from app.agent.planner import Planner
+from app.agent.executor import Executor
 
 logger = JarvisLogger.get_logger("agent_controller")
 
@@ -37,6 +39,8 @@ class AgentController:
         self._llm_manager = llm_manager
         self._formatter = MessageFormatter()
         self._parser = ResponseParser()
+        self._planner = Planner()
+        self._executor = Executor(llm_manager)
 
     def process_request(self, request: AgentRequest) -> AgentResponse:
         """Processes an incoming user request using the active context.
@@ -64,20 +68,26 @@ class AgentController:
             self.conversation.add_message(user_message)
             logger.info("Conversation updated with user message.")
 
-            # 2. Use MessageFormatter to get payload ready for provider
+            # 2. Formulate Plan using Planner
+            logger.info("Formulating execution plan...")
+            plan = self._planner.create_plan(request)
+            logger.info(f"Intent classified: {plan.intent.intent_type.name} (confidence={plan.intent.confidence})")
+            logger.info(f"Execution Plan: use_llm={plan.use_llm}, use_tools={plan.use_tools}, use_memory={plan.use_memory}")
+
+            # 3. Use MessageFormatter to get payload ready
             logger.info("Formatting started.")
             formatted_messages = self._formatter.format_history(self.conversation.get_history())
 
-            # 3. Call LLMManager.generate()
-            logger.info("LLM request sent.")
-            raw_response = self._llm_manager.generate(formatted_messages)
-            logger.info("LLM response received.")
+            # 4. Run Plan using Executor
+            logger.info("Executing plan...")
+            raw_response = self._executor.execute(plan, formatted_messages)
+            logger.info("Execution complete, response received.")
 
-            # 4. Pass result to ResponseParser to create AgentResponse
+            # 5. Pass result to ResponseParser to create AgentResponse
             agent_response = self._parser.parse_response(raw_response)
             logger.info("Response parsing complete.")
 
-            # 5. Create and store assistant Message
+            # 6. Create and store assistant Message
             assistant_message = Message(
                 id=generate_message_id(),
                 role=MessageRole.ASSISTANT,
@@ -96,6 +106,7 @@ class AgentController:
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Error processing request: {e}. Execution time: {duration_ms:.2f} ms")
             raise
+
     def reset(self) -> None:
         """Resets the current conversation log and session state managers."""
         self.conversation.clear()
