@@ -174,16 +174,31 @@ class Application:
                 metadata={}
             )
 
+            label_printed = False
             try:
-                response = controller.process_request(request)
-                print(f"Jarvis > {response.text}")
-                print()
+                # Get the streaming iterator
+                stream = controller.process_request_stream(request)
+
+                # Iterate over the text chunks
+                for chunk in stream:
+                    if not label_printed:
+                        print("Jarvis > ", end="", flush=True)
+                        label_printed = True
+                    print(chunk, end="", flush=True)
+
+                if label_printed:
+                    print()
+                    print()
             except LLMError as le:
-                self.logger.error(f"LLM Error: {le}")
+                self.logger.error(f"LLM Error during stream: {le}")
+                if label_printed:
+                    print()
                 print(f"Jarvis > [Error] Failed to communicate with model: {le}")
                 print()
             except Exception as e:
-                self.logger.error(f"Unexpected error processing request: {e}")
+                self.logger.error(f"Unexpected error processing request stream: {e}")
+                if label_printed:
+                    print()
                 print(f"Jarvis > [Error] An unexpected error occurred: {e}")
                 print()
 

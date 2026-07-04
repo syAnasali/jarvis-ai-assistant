@@ -1,8 +1,9 @@
 """Agent execution orchestrator controller."""
 
 import time
+from collections.abc import Iterator
 from datetime import datetime, timezone
-from typing import Dict, Any
+from typing import Dict, Any, List
 from app.agent.models import AgentRequest, AgentResponse
 from app.agent.conversation import Conversation
 from app.agent.context import ContextManager
@@ -12,7 +13,7 @@ from app.ai.formatter import MessageFormatter
 from app.ai.parser import ResponseParser
 from app.core.logger import JarvisLogger
 from app.utils.id_generator import generate_message_id
-from app.agent.planner import Planner
+from app.agent.planner import Planner, ExecutionPlan
 from app.agent.executor import Executor
 
 logger = JarvisLogger.get_logger("agent_controller")
@@ -55,39 +56,18 @@ class AgentController:
         logger.info(f"Request received: ID={request.request_id}")
 
         try:
-            self.context_manager.set_active_request(request)
+            plan, formatted_messages = self._prepare_request(request)
 
-            # 1. Create and add user Message to Conversation
-            user_message = Message(
-                id=generate_message_id(),
-                role=MessageRole.USER,
-                content=request.text,
-                timestamp=datetime.now(timezone.utc),
-                metadata=request.metadata,
-            )
-            self.conversation.add_message(user_message)
-            logger.info("Conversation updated with user message.")
-
-            # 2. Formulate Plan using Planner
-            logger.info("Formulating execution plan...")
-            plan = self._planner.create_plan(request)
-            logger.info(f"Intent classified: {plan.intent.intent_type.name} (confidence={plan.intent.confidence})")
-            logger.info(f"Execution Plan: use_llm={plan.use_llm}, use_tools={plan.use_tools}, use_memory={plan.use_memory}")
-
-            # 3. Use MessageFormatter to get payload ready
-            logger.info("Formatting started.")
-            formatted_messages = self._formatter.format_history(self.conversation.get_history())
-
-            # 4. Run Plan using Executor
+            # Run Plan using Executor
             logger.info("Executing plan...")
             raw_response = self._executor.execute(plan, formatted_messages)
             logger.info("Execution complete, response received.")
 
-            # 5. Pass result to ResponseParser to create AgentResponse
+            # Pass result to ResponseParser to create AgentResponse
             agent_response = self._parser.parse_response(raw_response)
             logger.info("Response parsing complete.")
 
-            # 6. Create and store assistant Message
+            # Create and store assistant Message
             assistant_message = Message(
                 id=generate_message_id(),
                 role=MessageRole.ASSISTANT,
@@ -106,6 +86,101 @@ class AgentController:
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.error(f"Error processing request: {e}. Execution time: {duration_ms:.2f} ms")
             raise
+
+    def process_request_stream(self, request: AgentRequest) -> Iterator[str]:
+        """Processes an incoming request as a stream of text chunks.
+
+        Args:
+            request: The input AgentRequest object.
+
+        Returns:
+            Iterator[str]: An iterator yielding text chunks.
+
+        Raises:
+            Exception: If execution fails before or during streaming.
+        """
+        start_time = time.perf_counter()
+        logger.info(f"Streaming request received: ID={request.request_id}")
+
+        try:
+            plan, formatted_messages = self._prepare_request(request)
+            logger.info("Execution plan created and conversation formatted.")
+
+            logger.info("Streaming provider execution started.")
+            stream = self._executor.execute_stream(plan, formatted_messages)
+
+            accumulator = []
+            first_chunk_received = False
+
+            for raw_chunk in stream:
+                if not first_chunk_received:
+                    logger.info("First text chunk received.")
+                    first_chunk_received = True
+
+                parsed_text = self._parser.parse_stream_chunk(raw_chunk)
+                if parsed_text:
+                    accumulator.append(parsed_text)
+                    yield parsed_text
+
+            logger.info("Streaming provider execution completed.")
+
+            # Join accumulated text into the complete assistant response
+            full_response_text = "".join(accumulator)
+
+            # Create ONE assistant Message containing the complete response
+            assistant_message = Message(
+                id=generate_message_id(),
+                role=MessageRole.ASSISTANT,
+                content=full_response_text,
+                timestamp=datetime.now(timezone.utc),
+                metadata={},
+            )
+            self.conversation.add_message(assistant_message)
+            logger.info("Assistant response stored.")
+
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(f"Streaming request completed. Total streaming duration: {duration_ms:.2f} ms")
+
+        except Exception as e:
+            duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.error(f"Error processing streaming request: {e}. Execution time: {duration_ms:.2f} ms")
+            # Propagate exception to caller
+            raise
+
+    def _prepare_request(self, request: AgentRequest) -> tuple[ExecutionPlan, List[Dict[str, Any]]]:
+        """Prepares session state, records user input, and formats history payload.
+
+        Args:
+            request: The user AgentRequest.
+
+        Returns:
+            tuple[ExecutionPlan, List[Dict[str, Any]]]: Formulated plan and formatted history list.
+        """
+        self.context_manager.set_active_request(request)
+
+        # Create and add user Message to Conversation
+        user_message = Message(
+            id=generate_message_id(),
+            role=MessageRole.USER,
+            content=request.text,
+            timestamp=datetime.now(timezone.utc),
+            metadata=request.metadata,
+        )
+        self.conversation.add_message(user_message)
+        logger.info("Conversation updated with user message.")
+
+        # Formulate Plan using Planner
+        logger.info("Formulating execution plan...")
+        plan = self._planner.create_plan(request)
+        logger.info(f"Intent classified: {plan.intent.intent_type.name} (confidence={plan.intent.confidence})")
+        logger.info(f"Execution Plan: use_llm={plan.use_llm}, use_tools={plan.use_tools}, use_memory={plan.use_memory}")
+
+        # Use MessageFormatter to get payload ready
+        logger.info("Formatting started.")
+        formatted_messages = self._formatter.format_history(self.conversation.get_history())
+        logger.info("Conversation formatted.")
+
+        return plan, formatted_messages
 
     def reset(self) -> None:
         """Resets the current conversation log and session state managers."""

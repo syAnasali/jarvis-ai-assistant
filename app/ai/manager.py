@@ -1,5 +1,6 @@
 """Manager for registering and coordinating active LLM providers."""
 
+from collections.abc import Iterator
 from typing import Dict, Any, List
 from app.ai.interfaces import BaseLLMProvider
 from app.core.exceptions import LLMError
@@ -132,6 +133,28 @@ class LLMManager:
         if not active:
             raise LLMError("No active LLM provider has been loaded.")
         return active.generate(messages, options)
+
+    def generate_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        options: Dict[str, Any] | None = None
+    ) -> Iterator[Any]:
+        """Delegates streaming generation to the active provider.
+
+        Args:
+            messages: Formatted message payload dictionaries.
+            options: Optional runtime options.
+
+        Returns:
+            Iterator[Any]: An iterator yielding raw provider response chunks.
+
+        Raises:
+            LLMError: If no provider is active or generation fails.
+        """
+        active = self.active_provider
+        if not active:
+            raise LLMError("No active LLM provider has been loaded.")
+        return active.generate_stream(messages, options)
 
     def health_check(self) -> Dict[str, Any]:
         """Aggregates health diagnostics for all registered providers.

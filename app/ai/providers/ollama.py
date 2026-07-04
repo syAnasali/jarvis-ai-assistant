@@ -1,5 +1,6 @@
 """Ollama LLM provider implementation."""
 
+from collections.abc import Iterator
 from typing import List, Dict, Any
 from ollama import Client, ResponseError
 from app.ai.interfaces import BaseLLMProvider
@@ -84,6 +85,40 @@ class OllamaProvider(BaseLLMProvider):
             raise LLMError(f"Ollama API returned an error: {e}") from e
         except Exception as e:
             raise LLMError(f"Ollama generation failed: {e}") from e
+
+    def generate_stream(
+        self,
+        messages: List[Dict[str, Any]],
+        options: Dict[str, Any] | None = None
+    ) -> Iterator[Any]:
+        """Performs a streaming chat completion request to the Ollama server.
+
+        Args:
+            messages: Formatted message payload dictionaries.
+            options: Optional execution options.
+
+        Returns:
+            Iterator[Any]: An iterator yielding raw Ollama response chunks.
+
+        Raises:
+            LLMError: If the streaming request fails.
+        """
+        if self._client is None:
+            raise LLMError("Ollama client is not initialized. Call initialize() first.")
+
+        try:
+            stream = self._client.chat(
+                model=self._model,
+                messages=messages,
+                options=options,
+                stream=True,
+            )
+            for chunk in stream:
+                yield chunk
+        except ResponseError as e:
+            raise LLMError(f"Ollama API returned a streaming error: {e}") from e
+        except Exception as e:
+            raise LLMError(f"Ollama streaming generation failed: {e}") from e
 
     def health_check(self) -> Dict[str, Any]:
         """Provides diagnostic information about Ollama connection and model.

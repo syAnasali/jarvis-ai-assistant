@@ -31,6 +31,27 @@ class ResponseParser:
             metadata={}
         )
 
+    def parse_stream_chunk(self, raw_chunk: Any) -> str:
+        """Parses a single raw provider chunk to extract text content.
+
+        Args:
+            raw_chunk: A single streaming response chunk (dictionary or SDK object).
+
+        Returns:
+            str: The extracted text content chunk, or an empty string.
+        """
+        if isinstance(raw_chunk, dict):
+            msg = raw_chunk.get("message", {})
+            if isinstance(msg, dict):
+                return msg.get("content", "")
+            return getattr(msg, "content", "") or ""
+
+        msg = getattr(raw_chunk, "message", None)
+        if msg is not None:
+            return getattr(msg, "content", "") or ""
+
+        return ""
+
     def _extract_content(self, raw_output: Any) -> str:
         """Extracts the message content string from raw provider outputs.
 
