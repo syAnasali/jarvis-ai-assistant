@@ -57,13 +57,15 @@ class OllamaProvider(BaseLLMProvider):
     def generate(
         self,
         messages: List[Dict[str, Any]],
-        options: Dict[str, Any] | None = None
+        options: Dict[str, Any] | None = None,
+        tools: List[Dict[str, Any]] | None = None
     ) -> Any:
         """Performs a chat completion request to the Ollama server.
 
         Args:
             messages: Formatted message payload dictionaries.
             options: Optional execution options.
+            tools: Optional provider-neutral tool schemas list.
 
         Returns:
             Any: Raw Ollama chat response object or dictionary.
@@ -74,11 +76,31 @@ class OllamaProvider(BaseLLMProvider):
         if self._client is None:
             raise LLMError("Ollama client is not initialized. Call initialize() first.")
 
+        kwargs: Dict[str, Any] = {}
+        if options:
+            kwargs["options"] = options
+        if tools:
+            adapted = []
+            for t in tools:
+                adapted.append({
+                    "type": "function",
+                    "function": {
+                        "name": t.get("name"),
+                        "description": t.get("description"),
+                        "parameters": t.get("parameters", {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        })
+                    }
+                })
+            kwargs["tools"] = adapted
+
         try:
             response = self._client.chat(
                 model=self._model,
                 messages=messages,
-                options=options,
+                **kwargs
             )
             return response
         except ResponseError as e:
@@ -89,13 +111,15 @@ class OllamaProvider(BaseLLMProvider):
     def generate_stream(
         self,
         messages: List[Dict[str, Any]],
-        options: Dict[str, Any] | None = None
+        options: Dict[str, Any] | None = None,
+        tools: List[Dict[str, Any]] | None = None
     ) -> Iterator[Any]:
         """Performs a streaming chat completion request to the Ollama server.
 
         Args:
             messages: Formatted message payload dictionaries.
             options: Optional execution options.
+            tools: Optional provider-neutral tool schemas list.
 
         Returns:
             Iterator[Any]: An iterator yielding raw Ollama response chunks.
@@ -106,12 +130,32 @@ class OllamaProvider(BaseLLMProvider):
         if self._client is None:
             raise LLMError("Ollama client is not initialized. Call initialize() first.")
 
+        kwargs: Dict[str, Any] = {}
+        if options:
+            kwargs["options"] = options
+        if tools:
+            adapted = []
+            for t in tools:
+                adapted.append({
+                    "type": "function",
+                    "function": {
+                        "name": t.get("name"),
+                        "description": t.get("description"),
+                        "parameters": t.get("parameters", {
+                            "type": "object",
+                            "properties": {},
+                            "required": []
+                        })
+                    }
+                })
+            kwargs["tools"] = adapted
+
         try:
             stream = self._client.chat(
                 model=self._model,
                 messages=messages,
-                options=options,
                 stream=True,
+                **kwargs
             )
             for chunk in stream:
                 yield chunk

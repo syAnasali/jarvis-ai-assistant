@@ -115,13 +115,15 @@ class LLMManager:
     def generate(
         self,
         messages: List[Dict[str, Any]],
-        options: Dict[str, Any] | None = None
+        options: Dict[str, Any] | None = None,
+        tools: List[Dict[str, Any]] | None = None
     ) -> Any:
         """Delegates generation to the active provider.
 
         Args:
             messages: Formatted message payload dictionaries.
             options: Optional runtime options.
+            tools: Optional provider-neutral tool schemas list.
 
         Returns:
             Any: Raw provider output.
@@ -132,18 +134,20 @@ class LLMManager:
         active = self.active_provider
         if not active:
             raise LLMError("No active LLM provider has been loaded.")
-        return active.generate(messages, options)
+        return active.generate(messages, options, tools)
 
     def generate_stream(
         self,
         messages: List[Dict[str, Any]],
-        options: Dict[str, Any] | None = None
+        options: Dict[str, Any] | None = None,
+        tools: List[Dict[str, Any]] | None = None
     ) -> Iterator[Any]:
         """Delegates streaming generation to the active provider.
 
         Args:
             messages: Formatted message payload dictionaries.
             options: Optional runtime options.
+            tools: Optional provider-neutral tool schemas list.
 
         Returns:
             Iterator[Any]: An iterator yielding raw provider response chunks.
@@ -154,7 +158,7 @@ class LLMManager:
         active = self.active_provider
         if not active:
             raise LLMError("No active LLM provider has been loaded.")
-        return active.generate_stream(messages, options)
+        return active.generate_stream(messages, options, tools)
 
     def health_check(self) -> Dict[str, Any]:
         """Aggregates health diagnostics for all registered providers.

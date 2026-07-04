@@ -14,3 +14,7 @@ LOG_DIR: Path = Path("logs")
 CONFIG_DIR: Path = Path("config")
 DATABASE_NAME: str = "jarvis.db"
 DATABASE_PATH: Path = DATA_DIR / DATABASE_NAME
+
+# Agent configuration
+MAX_AGENT_ITERATIONS: int = 5
+

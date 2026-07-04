@@ -15,6 +15,7 @@ from app.core.logger import JarvisLogger
 from app.utils.id_generator import generate_message_id
 from app.agent.planner import Planner, ExecutionPlan
 from app.agent.executor import Executor
+from app.agent.runner import AgentRunner
 
 logger = JarvisLogger.get_logger("agent_controller")
 
@@ -26,7 +27,8 @@ class AgentController:
         self,
         conversation: Conversation,
         context_manager: ContextManager,
-        llm_manager: LLMManager
+        llm_manager: LLMManager,
+        agent_runner: AgentRunner | None = None
     ) -> None:
         """Initializes the AgentController.
 
@@ -34,6 +36,7 @@ class AgentController:
             conversation: The active Conversation model.
             context_manager: The active session ContextManager.
             llm_manager: The LLM manager to route calls.
+            agent_runner: The AgentRunner to orchestrate tool calling loops.
         """
         self.conversation = conversation
         self.context_manager = context_manager
@@ -42,6 +45,7 @@ class AgentController:
         self._parser = ResponseParser()
         self._planner = Planner()
         self._executor = Executor(llm_manager)
+        self._runner = agent_runner
 
     def process_request(self, request: AgentRequest) -> AgentResponse:
         """Processes an incoming user request using the active context.
@@ -58,14 +62,16 @@ class AgentController:
         try:
             plan, formatted_messages = self._prepare_request(request)
 
-            # Run Plan using Executor
-            logger.info("Executing plan...")
-            raw_response = self._executor.execute(plan, formatted_messages)
-            logger.info("Execution complete, response received.")
+            if plan.use_tools or plan.use_memory:
+                raise NotImplementedError("Tool and Memory execution paths are not yet supported directly.")
 
-            # Pass result to ResponseParser to create AgentResponse
-            agent_response = self._parser.parse_response(raw_response)
-            logger.info("Response parsing complete.")
+            if plan.use_llm and self._runner is not None:
+                logger.info("Executing via AgentRunner action loop...")
+                agent_response = self._runner.run(request, formatted_messages)
+            else:
+                logger.info("Executing via Executor...")
+                raw_response = self._executor.execute(plan, formatted_messages)
+                agent_response = self._parser.parse_response(raw_response)
 
             # Create and store assistant Message
             assistant_message = Message(
@@ -106,23 +112,34 @@ class AgentController:
             plan, formatted_messages = self._prepare_request(request)
             logger.info("Execution plan created and conversation formatted.")
 
-            logger.info("Streaming provider execution started.")
-            stream = self._executor.execute_stream(plan, formatted_messages)
+            if plan.use_tools or plan.use_memory:
+                raise NotImplementedError("Tool and Memory execution paths are not yet supported for streaming.")
 
             accumulator = []
-            first_chunk_received = False
+            if plan.use_llm and self._runner is not None:
+                logger.info("Streaming execution started via AgentRunner...")
+                stream = self._runner.run_stream(request, formatted_messages)
+                
+                for parsed_text in stream:
+                    if parsed_text:
+                        accumulator.append(parsed_text)
+                        yield parsed_text
+            else:
+                logger.info("Streaming execution started via Executor...")
+                stream = self._executor.execute_stream(plan, formatted_messages)
+                first_chunk_received = False
 
-            for raw_chunk in stream:
-                if not first_chunk_received:
-                    logger.info("First text chunk received.")
-                    first_chunk_received = True
+                for raw_chunk in stream:
+                    if not first_chunk_received:
+                        logger.info("First text chunk received.")
+                        first_chunk_received = True
 
-                parsed_text = self._parser.parse_stream_chunk(raw_chunk)
-                if parsed_text:
-                    accumulator.append(parsed_text)
-                    yield parsed_text
+                    parsed_text = self._parser.parse_stream_chunk(raw_chunk)
+                    if parsed_text:
+                        accumulator.append(parsed_text)
+                        yield parsed_text
 
-            logger.info("Streaming provider execution completed.")
+            logger.info("Streaming execution completed.")
 
             # Join accumulated text into the complete assistant response
             full_response_text = "".join(accumulator)

@@ -133,13 +133,45 @@ class Application:
         from app.agent.conversation import Conversation
         from app.agent.context import ContextManager
         from app.agent.controller import AgentController
+        from app.tools.registry import ToolRegistry
+        from app.tools.executor import ToolExecutor
+        from app.tools.builtin.system import CurrentTimeTool, SystemInfoTool
+        from app.agent.runner import AgentRunner
+        from app.ai.parser import ResponseParser
 
+        # 1. Create and populate ToolRegistry
+        registry = ToolRegistry()
+        registry.register(CurrentTimeTool())
+        registry.register(SystemInfoTool())
+
+        # 2. Create ToolExecutor
+        executor = ToolExecutor(registry)
+
+        # 3. Create parser
+        parser = ResponseParser()
+
+        # 4. Create AgentRunner
+        llm_manager = self.container.get("llm_manager")
+        agent_runner = AgentRunner(
+            llm_manager=llm_manager,
+            registry=registry,
+            executor=executor,
+            parser=parser
+        )
+
+        # 5. Register in container
+        self.container.register("tool_registry", registry)
+        self.container.register("tool_executor", executor)
+        self.container.register("agent_runner", agent_runner)
+
+        # 6. Initialize Controller with AgentRunner
         conversation = Conversation()
         context_manager = ContextManager()
         controller = AgentController(
             conversation=conversation,
             context_manager=context_manager,
-            llm_manager=self.container.get("llm_manager")
+            llm_manager=llm_manager,
+            agent_runner=agent_runner
         )
         self.container.register("controller", controller)
 

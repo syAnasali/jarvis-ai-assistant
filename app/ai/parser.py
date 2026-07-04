@@ -1,7 +1,7 @@
 """Normalizer and parser for model response payloads."""
 
-from typing import Any
-from app.agent.models import AgentResponse
+from typing import Any, List
+from app.agent.models import AgentResponse, ToolCall
 from app.utils.id_generator import generate_response_id
 
 
@@ -51,6 +51,84 @@ class ResponseParser:
             return getattr(msg, "content", "") or ""
 
         return ""
+
+    def has_tool_calls(self, raw_output: Any) -> bool:
+        """Checks if a provider response contains tool execution requests.
+
+        Args:
+            raw_output: The raw provider response output.
+
+        Returns:
+            bool: True if tool calls exist, False otherwise.
+        """
+        if isinstance(raw_output, dict):
+            msg = raw_output.get("message", {})
+            if isinstance(msg, dict):
+                return bool(msg.get("tool_calls"))
+            return bool(getattr(msg, "tool_calls", None))
+        
+        msg = getattr(raw_output, "message", None)
+        if msg is not None:
+            return bool(getattr(msg, "tool_calls", None))
+        
+        return False
+
+    def parse_tool_calls(self, raw_output: Any) -> List[ToolCall]:
+        """Parses raw model output into a list of unified ToolCall models.
+
+        Args:
+            raw_output: The raw provider response output.
+
+        Returns:
+            List[ToolCall]: A list of ToolCall instances.
+        """
+        raw_calls = []
+        if isinstance(raw_output, dict):
+            msg = raw_output.get("message", {})
+            if isinstance(msg, dict):
+                raw_calls = msg.get("tool_calls") or []
+            else:
+                raw_calls = getattr(msg, "tool_calls", None) or []
+        else:
+            msg = getattr(raw_output, "message", None)
+            if msg is not None:
+                raw_calls = getattr(msg, "tool_calls", None) or []
+
+        parsed_calls = []
+        for call in raw_calls:
+            try:
+                if isinstance(call, dict):
+                    func = call.get("function", {})
+                    if isinstance(func, dict):
+                        name = func.get("name")
+                        args = func.get("arguments")
+                    else:
+                        name = getattr(func, "name", None)
+                        args = getattr(func, "arguments", None)
+                else:
+                    func = getattr(call, "function", None)
+                    if func is not None:
+                        name = getattr(func, "name", None)
+                        args = getattr(func, "arguments", None)
+                    else:
+                        name = None
+                        args = None
+
+                if not name:
+                    continue
+
+                if args is None:
+                    norm_args = {}
+                elif isinstance(args, dict):
+                    norm_args = dict(args)
+                else:
+                    norm_args = {}
+
+                parsed_calls.append(ToolCall(tool_name=name, arguments=norm_args))
+            except Exception:
+                continue
+
+        return parsed_calls
 
     def _extract_content(self, raw_output: Any) -> str:
         """Extracts the message content string from raw provider outputs.

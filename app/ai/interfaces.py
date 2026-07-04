@@ -35,13 +35,15 @@ class BaseLLMProvider(ABC):
     def generate(
         self,
         messages: List[Dict[str, Any]],
-        options: Dict[str, Any] | None = None
+        options: Dict[str, Any] | None = None,
+        tools: List[Dict[str, Any]] | None = None
     ) -> Any:
         """Sends messages to the LLM and retrieves the complete, raw provider response.
 
         Args:
             messages: List of structured message dictionaries.
             options: Optional runtime configuration options.
+            tools: Optional provider-neutral tool schemas list.
 
         Returns:
             Any: Raw provider output representing the full response.
@@ -55,13 +57,15 @@ class BaseLLMProvider(ABC):
     def generate_stream(
         self,
         messages: List[Dict[str, Any]],
-        options: Dict[str, Any] | None = None
+        options: Dict[str, Any] | None = None,
+        tools: List[Dict[str, Any]] | None = None
     ) -> Iterator[Any]:
         """Sends messages to the LLM and yields raw response chunks incrementally.
 
         Args:
             messages: List of structured message dictionaries.
             options: Optional runtime configuration options.
+            tools: Optional provider-neutral tool schemas list.
 
         Returns:
             Iterator[Any]: An iterator yielding raw provider response chunks.
