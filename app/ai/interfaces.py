@@ -5,6 +5,9 @@ from collections.abc import Iterator
 from typing import List, Dict, Any
 
 
+from app.ai.models import GenerationMetrics, GenerationProfile, GenerationResult
+
+
 class BaseLLMProvider(ABC):
     """Abstract base class representing an LLM backend provider."""
 
@@ -36,17 +39,19 @@ class BaseLLMProvider(ABC):
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
-    ) -> Any:
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
+    ) -> GenerationResult:
         """Sends messages to the LLM and retrieves the complete, raw provider response.
 
         Args:
             messages: List of structured message dictionaries.
             options: Optional runtime configuration options.
             tools: Optional provider-neutral tool schemas list.
+            profile: Optional semantic generation profile.
 
         Returns:
-            Any: Raw provider output representing the full response.
+            GenerationResult: Wrapped response and normalized metrics.
 
         Raises:
             Exception: If the request fails.
@@ -58,7 +63,8 @@ class BaseLLMProvider(ABC):
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
     ) -> Iterator[Any]:
         """Sends messages to the LLM and yields raw response chunks incrementally.
 
@@ -66,6 +72,7 @@ class BaseLLMProvider(ABC):
             messages: List of structured message dictionaries.
             options: Optional runtime configuration options.
             tools: Optional provider-neutral tool schemas list.
+            profile: Optional semantic generation profile.
 
         Returns:
             Iterator[Any]: An iterator yielding raw provider response chunks.

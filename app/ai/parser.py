@@ -8,6 +8,13 @@ from app.utils.id_generator import generate_response_id
 class ResponseParser:
     """Parses raw provider LLM outputs into standardized AgentResponse models."""
 
+    def _unwrap(self, response: Any) -> Any:
+        """Helper to unwrap GenerationResult to raw response if necessary."""
+        from app.ai.models import GenerationResult
+        if isinstance(response, GenerationResult):
+            return response.raw_response
+        return response
+
     def parse_response(self, raw_output: Any) -> AgentResponse:
         """Parses a raw output into the unified AgentResponse format.
 
@@ -17,9 +24,10 @@ class ResponseParser:
         Returns:
             AgentResponse: Unified parsed response instance.
         """
-        content = self._extract_content(raw_output)
+        unwrapped = self._unwrap(raw_output)
+        content = self._extract_content(unwrapped)
         if not content:
-            content = str(raw_output)
+            content = str(unwrapped)
 
         response_id = generate_response_id()
 
@@ -61,13 +69,14 @@ class ResponseParser:
         Returns:
             bool: True if tool calls exist, False otherwise.
         """
-        if isinstance(raw_output, dict):
-            msg = raw_output.get("message", {})
+        unwrapped = self._unwrap(raw_output)
+        if isinstance(unwrapped, dict):
+            msg = unwrapped.get("message", {})
             if isinstance(msg, dict):
                 return bool(msg.get("tool_calls"))
             return bool(getattr(msg, "tool_calls", None))
         
-        msg = getattr(raw_output, "message", None)
+        msg = getattr(unwrapped, "message", None)
         if msg is not None:
             return bool(getattr(msg, "tool_calls", None))
         
@@ -82,15 +91,16 @@ class ResponseParser:
         Returns:
             List[ToolCall]: A list of ToolCall instances.
         """
+        unwrapped = self._unwrap(raw_output)
         raw_calls = []
-        if isinstance(raw_output, dict):
-            msg = raw_output.get("message", {})
+        if isinstance(unwrapped, dict):
+            msg = unwrapped.get("message", {})
             if isinstance(msg, dict):
                 raw_calls = msg.get("tool_calls") or []
             else:
                 raw_calls = getattr(msg, "tool_calls", None) or []
         else:
-            msg = getattr(raw_output, "message", None)
+            msg = getattr(unwrapped, "message", None)
             if msg is not None:
                 raw_calls = getattr(msg, "tool_calls", None) or []
 

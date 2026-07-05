@@ -12,7 +12,7 @@ from app.ai.manager import LLMManager
 from app.ai.formatter import MessageFormatter
 from app.ai.parser import ResponseParser
 from app.core.logger import JarvisLogger
-from app.utils.id_generator import generate_message_id
+from app.utils.id_generator import generate_message_id, generate_response_id
 from app.agent.planner import Planner, ExecutionPlan
 from app.agent.executor import Executor
 from app.agent.runner import AgentRunner
@@ -65,9 +65,18 @@ class AgentController:
             if plan.use_tools or plan.use_memory:
                 raise NotImplementedError("Tool and Memory execution paths are not yet supported directly.")
 
+            exec_metrics = None
             if plan.use_llm and self._runner is not None:
                 logger.info("Executing via AgentRunner action loop...")
-                agent_response = self._runner.run(request, formatted_messages)
+                run_result = self._runner.run(request, formatted_messages)
+                agent_response = AgentResponse(
+                    response_id=generate_response_id(),
+                    text=run_result.text,
+                    tool_calls=[],
+                    success=True,
+                    metadata={"execution_metrics": run_result.execution_metrics}
+                )
+                exec_metrics = run_result.execution_metrics
             else:
                 logger.info("Executing via Executor...")
                 raw_response = self._executor.execute(plan, formatted_messages)
@@ -85,7 +94,18 @@ class AgentController:
             logger.info("Assistant response stored.")
 
             duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.info(f"Request completed. Execution time: {duration_ms:.2f} ms")
+            
+            if exec_metrics is not None:
+                logger.info(
+                    f"Request completed: "
+                    f"request_id={request.request_id}, "
+                    f"total_duration_ms={duration_ms:.2f}, "
+                    f"agent_iterations={exec_metrics.iterations}, "
+                    f"model_calls={exec_metrics.model_calls}, "
+                    f"tool_calls={exec_metrics.tool_calls}"
+                )
+            else:
+                logger.info(f"Request completed. Execution time: {duration_ms:.2f} ms")
 
             return agent_response
         except Exception as e:
@@ -116,14 +136,21 @@ class AgentController:
                 raise NotImplementedError("Tool and Memory execution paths are not yet supported for streaming.")
 
             accumulator = []
+            exec_metrics = None
             if plan.use_llm and self._runner is not None:
                 logger.info("Streaming execution started via AgentRunner...")
                 stream = self._runner.run_stream(request, formatted_messages)
                 
-                for parsed_text in stream:
-                    if parsed_text:
-                        accumulator.append(parsed_text)
-                        yield parsed_text
+                iterator = iter(stream)
+                while True:
+                    try:
+                        parsed_text = next(iterator)
+                        if parsed_text:
+                            accumulator.append(parsed_text)
+                            yield parsed_text
+                    except StopIteration as e:
+                        exec_metrics = e.value
+                        break
             else:
                 logger.info("Streaming execution started via Executor...")
                 stream = self._executor.execute_stream(plan, formatted_messages)
@@ -156,7 +183,18 @@ class AgentController:
             logger.info("Assistant response stored.")
 
             duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.info(f"Streaming request completed. Total streaming duration: {duration_ms:.2f} ms")
+            
+            if exec_metrics is not None:
+                logger.info(
+                    f"Streaming request completed: "
+                    f"request_id={request.request_id}, "
+                    f"total_duration_ms={duration_ms:.2f}, "
+                    f"agent_iterations={exec_metrics.iterations}, "
+                    f"model_calls={exec_metrics.model_calls}, "
+                    f"tool_calls={exec_metrics.tool_calls}"
+                )
+            else:
+                logger.info(f"Streaming request completed. Total streaming duration: {duration_ms:.2f} ms")
 
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000

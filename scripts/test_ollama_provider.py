@@ -68,8 +68,16 @@ def run_test() -> int:
         print("Generation")
         print("----------")
         print("Sending chat generation request...")
-        raw_response = provider.generate(formatted_messages)
+        gen_result = provider.generate(formatted_messages)
+        raw_response = gen_result.raw_response
         print(f"Response Type: {type(raw_response)}")
+        print(f"Load duration: {gen_result.metrics.load_duration_ms} ms")
+        print(f"Prompt eval duration: {gen_result.metrics.prompt_eval_duration_ms} ms")
+        print(f"Generation duration: {gen_result.metrics.generation_duration_ms} ms")
+        print(f"Total duration: {gen_result.metrics.total_duration_ms} ms")
+        print(f"Prompt tokens: {gen_result.metrics.prompt_tokens}")
+        print(f"Generated tokens: {gen_result.metrics.generated_tokens}")
+        print(f"Tokens per second: {gen_result.metrics.tokens_per_second}")
         print()
 
         # 5. Assistant Response Output

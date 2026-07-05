@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from typing import List, Dict, Any
 from app.agent.planner import ExecutionPlan
 from app.ai.manager import LLMManager
+from app.ai.models import GenerationProfile
 
 
 class Executor:
@@ -37,7 +38,7 @@ class Executor:
             raise NotImplementedError("Tool and Memory execution paths are not yet supported.")
 
         if plan.use_llm:
-            return self._llm_manager.generate(formatted_messages)
+            return self._llm_manager.generate(formatted_messages, profile=GenerationProfile.BALANCED)
 
         raise NotImplementedError("Plan does not contain a supported execution path.")
 
@@ -61,6 +62,6 @@ class Executor:
             raise NotImplementedError("Tool and Memory execution paths are not yet supported for streaming.")
 
         if plan.use_llm:
-            return self._llm_manager.generate_stream(formatted_messages)
+            return self._llm_manager.generate_stream(formatted_messages, profile=GenerationProfile.BALANCED)
 
         raise NotImplementedError("Plan does not contain a supported streaming execution path.")

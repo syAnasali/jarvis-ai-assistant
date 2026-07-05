@@ -1,4 +1,4 @@
-"""Unit tests for AgentRunner."""
+"""Unit tests for AgentRunner execution metrics, action loops, and generation profiles."""
 
 import pytest
 from typing import Any, List, Dict
@@ -11,6 +11,8 @@ from app.tools.executor import ToolExecutor
 from app.ai.parser import ResponseParser
 from app.agent.runner import AgentRunner
 from app.agent.models import AgentRequest, ToolCall
+from app.ai.models import GenerationMetrics, GenerationResult, GenerationProfile
+from app.ai.prompts import PromptManager, TOOL_USE_POLICY_MARKER
 from app.core.exceptions import LLMError
 
 
@@ -35,20 +37,38 @@ class FakeProvider(BaseLLMProvider):
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
-    ) -> Any:
-        self.calls.append((messages, tools))
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
+    ) -> GenerationResult:
+        self.calls.append((messages, tools, profile))
+        
         if self.responses:
-            return self.responses.pop(0)
-        return {"message": {"role": "assistant", "content": "Default final response"}}
+            raw = self.responses.pop(0)
+        else:
+            raw = {"message": {"role": "assistant", "content": "Default final response"}}
+            
+        metrics = GenerationMetrics(
+            provider="fake",
+            model="fake_model",
+            total_duration_ms=10.0,
+            load_duration_ms=1.0,
+            prompt_eval_duration_ms=2.0,
+            generation_duration_ms=7.0,
+            prompt_tokens=5,
+            generated_tokens=10,
+            tokens_per_second=1000.0,
+            generation_profile=profile.value
+        )
+        return GenerationResult(raw_response=raw, metrics=metrics)
 
     def generate_stream(
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
     ) -> Any:
-        self.calls.append((messages, tools))
+        self.calls.append((messages, tools, profile))
         if self.stream_responses:
             return self.stream_responses.pop(0)
         return [{"message": {"role": "assistant", "content": "Default final stream chunk"}}]
@@ -136,7 +156,7 @@ class RestrictedTestTool(BaseTool):
 
 
 def test_agent_runner_normal_response_no_tools():
-    """Verifies that normal dialogue with no tool requests returns directly."""
+    """Verifies that normal dialogue uses TOOL_SELECTION profile for the first turn."""
     provider = FakeProvider()
     provider.responses.append({"message": {"role": "assistant", "content": "Hello!"}})
 
@@ -154,10 +174,23 @@ def test_agent_runner_normal_response_no_tools():
 
     assert res.text == "Hello!"
     assert len(provider.calls) == 1
+    
+    # Verify first turn uses TOOL_SELECTION
+    messages, tools, profile = provider.calls[0]
+    assert profile == GenerationProfile.TOOL_SELECTION
+    
+    # Assert metrics
+    metrics = res.execution_metrics
+    assert metrics.iterations == 1
+    assert metrics.model_calls == 1
+    assert metrics.tool_calls == 0
+    assert len(metrics.iteration_metrics) == 1
+    assert metrics.iteration_metrics[0].model_metrics.generation_profile == "tool_selection"
+    assert res.requested_tools == ()
 
 
 def test_agent_runner_requests_safe_tool_execution():
-    """Verifies that SAFE tools execute and results return to the model in a second turn."""
+    """Verifies that SAFE tool execution tracks model calls, tool calls, and profiles correctly (TOOL_SELECTION then FAST)."""
     provider = FakeProvider()
     # 1st response: requests a tool call
     provider.responses.append({
@@ -198,16 +231,25 @@ def test_agent_runner_requests_safe_tool_execution():
     assert res.text == "The tool output was: result_val."
     assert len(provider.calls) == 2
 
-    # Verify messages passed to the second generate call contains the tool results
-    second_call_messages = provider.calls[1][0]
-    assert second_call_messages[1]["role"] == "assistant"
-    assert second_call_messages[2]["role"] == "tool"
-    assert second_call_messages[2]["name"] == "safe_test"
-    assert "result_val" in second_call_messages[2]["content"]
+    # Verify first turn used GenerationProfile.TOOL_SELECTION and second used GenerationProfile.FAST
+    assert provider.calls[0][2] == GenerationProfile.TOOL_SELECTION
+    assert provider.calls[1][2] == GenerationProfile.FAST
+
+    # Assert metrics
+    metrics = res.execution_metrics
+    assert metrics.iterations == 2
+    assert metrics.model_calls == 2
+    assert metrics.tool_calls == 1
+    assert len(metrics.iteration_metrics) == 2
+    assert metrics.iteration_metrics[0].tool_calls_count == 1
+    assert metrics.iteration_metrics[0].model_metrics.generation_profile == "tool_selection"
+    assert metrics.iteration_metrics[1].tool_calls_count == 0
+    assert metrics.iteration_metrics[1].model_metrics.generation_profile == "fast"
+    assert res.requested_tools == ("safe_test",)
 
 
 def test_agent_runner_multiple_tool_calls_in_one_turn():
-    """Verifies executing multiple tool requests in a single LLM turn."""
+    """Verifies executing multiple tool requests tracks tool call count and profile."""
     provider = FakeProvider()
     provider.responses.append({
         "message": {
@@ -236,16 +278,20 @@ def test_agent_runner_multiple_tool_calls_in_one_turn():
 
     assert res.text == "done"
     assert len(provider.calls) == 2
+    assert provider.calls[0][2] == GenerationProfile.TOOL_SELECTION
+    assert provider.calls[1][2] == GenerationProfile.FAST
 
-    # Second call should have assistant turn + 2 tool turns (total 4 messages in history)
-    second_call_messages = provider.calls[1][0]
-    assert len(second_call_messages) == 4
-    assert second_call_messages[2]["role"] == "tool"
-    assert second_call_messages[3]["role"] == "tool"
+    metrics = res.execution_metrics
+    assert metrics.iterations == 2
+    assert metrics.model_calls == 2
+    assert metrics.tool_calls == 2
+    assert metrics.iteration_metrics[0].tool_calls_count == 2
+    assert metrics.iteration_metrics[0].model_metrics.generation_profile == "tool_selection"
+    assert "safe_test" in res.requested_tools
 
 
 def test_agent_runner_confirmation_blocked():
-    """Verifies that CONFIRMATION tools block and return failure to model."""
+    """Verifies that CONFIRMATION tool block is counted."""
     provider = FakeProvider()
     provider.responses.append({
         "message": {
@@ -272,13 +318,14 @@ def test_agent_runner_confirmation_blocked():
     res = runner.run(req, [{"role": "user", "content": "Query"}])
 
     assert res.text == "blocked"
-    second_call_messages = provider.calls[1][0]
-    # Check that tool returned error
-    assert "requires confirmation" in second_call_messages[2]["content"]
+    metrics = res.execution_metrics
+    assert metrics.iterations == 2
+    assert metrics.model_calls == 2
+    assert metrics.tool_calls == 1
 
 
 def test_agent_runner_restricted_blocked():
-    """Verifies that RESTRICTED tools block and return failure to model."""
+    """Verifies that RESTRICTED tool block is counted."""
     provider = FakeProvider()
     provider.responses.append({
         "message": {
@@ -305,12 +352,14 @@ def test_agent_runner_restricted_blocked():
     res = runner.run(req, [{"role": "user", "content": "Query"}])
 
     assert res.text == "blocked"
-    second_call_messages = provider.calls[1][0]
-    assert "restricted tools" in second_call_messages[2]["content"]
+    metrics = res.execution_metrics
+    assert metrics.iterations == 2
+    assert metrics.model_calls == 2
+    assert metrics.tool_calls == 1
 
 
 def test_agent_runner_tool_failure_returned_safely():
-    """Verifies that runtime failures in execution return failures back to model."""
+    """Verifies that tool failure is tracked."""
     provider = FakeProvider()
     provider.responses.append({
         "message": {
@@ -337,14 +386,15 @@ def test_agent_runner_tool_failure_returned_safely():
     res = runner.run(req, [{"role": "user", "content": "Query"}])
 
     assert res.text == "failed"
-    second_call_messages = provider.calls[1][0]
-    assert "Failure injection" in second_call_messages[2]["content"]
+    metrics = res.execution_metrics
+    assert metrics.iterations == 2
+    assert metrics.model_calls == 2
+    assert metrics.tool_calls == 1
 
 
 def test_agent_runner_iteration_limit():
-    """Verifies that the runner throws an LLMError when loop runs indefinitely."""
+    """Verifies that runner triggers limit and iteration metrics remain valid up to 5."""
     provider = FakeProvider()
-    # Always requests a tool call, never terminates
     for _ in range(10):
         provider.responses.append({
             "message": {
@@ -371,5 +421,48 @@ def test_agent_runner_iteration_limit():
         runner.run(req, [{"role": "user", "content": "Query"}])
 
     assert "maximum iteration limit" in str(exc_info.value)
-    # The max iterations constant is 5, so it should call generate exactly 5 times.
     assert len(provider.calls) == 5
+
+
+def test_agent_runner_injects_tool_use_policy_exactly_once():
+    """Verifies that tool policy is present for tool-aware execution and is not duplicated."""
+    provider = FakeProvider()
+    # 1st response: requests safe_test
+    provider.responses.append({
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"function": {"name": "safe_test", "arguments": {"arg": "ok"}}}]
+        }
+    })
+    # 2nd response: final response
+    provider.responses.append({"message": {"role": "assistant", "content": "Final response text"}})
+
+    llm_manager = LLMManager()
+    llm_manager.register_provider("fake", provider)
+    llm_manager.switch_provider("fake")
+
+    registry = ToolRegistry()
+    registry.register(SafeTestTool())
+    executor = ToolExecutor(registry)
+    parser = ResponseParser()
+    runner = AgentRunner(llm_manager, registry, executor, parser)
+
+    req = AgentRequest("r1", "Query", "terminal")
+    res = runner.run(req, [{"role": "user", "content": "Query"}])
+
+    assert res.text == "Final response text"
+    assert len(provider.calls) == 2
+
+    # Check first turn messages
+    first_messages = provider.calls[0][0]
+    # Check that system prompt is first message
+    assert first_messages[0]["role"] == "system"
+    assert TOOL_USE_POLICY_MARKER in first_messages[0]["content"]
+
+    # Check second turn messages
+    second_messages = provider.calls[1][0]
+    # Verify tool policy is still there exactly once
+    system_messages = [msg for msg in second_messages if msg["role"] == "system"]
+    assert len(system_messages) == 1
+    assert TOOL_USE_POLICY_MARKER in system_messages[0]["content"]

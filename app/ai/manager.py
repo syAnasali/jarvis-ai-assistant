@@ -3,6 +3,7 @@
 from collections.abc import Iterator
 from typing import Dict, Any, List
 from app.ai.interfaces import BaseLLMProvider
+from app.ai.models import GenerationProfile, GenerationResult
 from app.core.exceptions import LLMError
 
 
@@ -116,17 +117,19 @@ class LLMManager:
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
-    ) -> Any:
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
+    ) -> GenerationResult:
         """Delegates generation to the active provider.
 
         Args:
             messages: Formatted message payload dictionaries.
             options: Optional runtime options.
             tools: Optional provider-neutral tool schemas list.
+            profile: Optional semantic generation profile.
 
         Returns:
-            Any: Raw provider output.
+            GenerationResult: Wrapped response and normalized metrics.
 
         Raises:
             LLMError: If no provider is active or generation fails.
@@ -134,13 +137,14 @@ class LLMManager:
         active = self.active_provider
         if not active:
             raise LLMError("No active LLM provider has been loaded.")
-        return active.generate(messages, options, tools)
+        return active.generate(messages, options, tools, profile)
 
     def generate_stream(
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
     ) -> Iterator[Any]:
         """Delegates streaming generation to the active provider.
 
@@ -148,6 +152,7 @@ class LLMManager:
             messages: Formatted message payload dictionaries.
             options: Optional runtime options.
             tools: Optional provider-neutral tool schemas list.
+            profile: Optional semantic generation profile.
 
         Returns:
             Iterator[Any]: An iterator yielding raw provider response chunks.
@@ -158,7 +163,7 @@ class LLMManager:
         active = self.active_provider
         if not active:
             raise LLMError("No active LLM provider has been loaded.")
-        return active.generate_stream(messages, options, tools)
+        return active.generate_stream(messages, options, tools, profile)
 
     def health_check(self) -> Dict[str, Any]:
         """Aggregates health diagnostics for all registered providers.

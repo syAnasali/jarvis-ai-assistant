@@ -4,6 +4,7 @@ from collections.abc import Iterator
 from typing import List, Dict, Any
 from ollama import Client, ResponseError
 from app.ai.interfaces import BaseLLMProvider
+from app.ai.models import GenerationMetrics, GenerationResult, GenerationProfile
 from app.core.exceptions import LLMError
 
 
@@ -54,21 +55,63 @@ class OllamaProvider(BaseLLMProvider):
         except Exception:
             return False
 
+    def _adapt_generation_profile(
+        self,
+        profile: GenerationProfile,
+        options: Dict[str, Any] | None
+    ) -> tuple[bool | None, Dict[str, Any]]:
+        """Maps provider-neutral GenerationProfile to Ollama specific options and settings.
+
+        Precedence:
+            Profile defaults are applied first. Explicit caller-provided options
+            override defaults. This method does not mutate the input dictionary.
+
+        Args:
+            profile: Semantic GenerationProfile value.
+            options: Caller-provided runtime options.
+
+        Returns:
+            tuple[bool | None, Dict[str, Any]]: Think parameter value and merged options dictionary.
+        """
+        merged_options = {}
+        if options:
+            merged_options.update(options)
+
+        # For qwen3:8b in Ollama:
+        if profile == GenerationProfile.FAST:
+            think_value = False
+        elif profile == GenerationProfile.TOOL_SELECTION:
+            think_value = False
+        elif profile == GenerationProfile.BALANCED:
+            think_value = False
+        elif profile == GenerationProfile.REASONING:
+            think_value = True
+        else:
+            think_value = None
+
+        from app.core.logger import JarvisLogger
+        prov_logger = JarvisLogger.get_logger("ollama_provider")
+        prov_logger.debug(f"Resolved provider profile behaviour: profile={profile.name}, think={think_value}")
+
+        return think_value, merged_options
+
     def generate(
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
-    ) -> Any:
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
+    ) -> GenerationResult:
         """Performs a chat completion request to the Ollama server.
 
         Args:
             messages: Formatted message payload dictionaries.
             options: Optional execution options.
             tools: Optional provider-neutral tool schemas list.
+            profile: Optional semantic generation profile.
 
         Returns:
-            Any: Raw Ollama chat response object or dictionary.
+            GenerationResult: Wrapped response and normalized metrics.
 
         Raises:
             LLMError: If the chat completion fails.
@@ -77,8 +120,12 @@ class OllamaProvider(BaseLLMProvider):
             raise LLMError("Ollama client is not initialized. Call initialize() first.")
 
         kwargs: Dict[str, Any] = {}
-        if options:
-            kwargs["options"] = options
+        think_value, merged_options = self._adapt_generation_profile(profile, options)
+        if merged_options:
+            kwargs["options"] = merged_options
+        if think_value is not None:
+            kwargs["think"] = think_value
+
         if tools:
             adapted = []
             for t in tools:
@@ -102,7 +149,55 @@ class OllamaProvider(BaseLLMProvider):
                 messages=messages,
                 **kwargs
             )
-            return response
+            
+            # Helper to retrieve metric safely
+            def get_metric(obj: Any, key: str) -> Any:
+                if isinstance(obj, dict):
+                    return obj.get(key)
+                return getattr(obj, key, None)
+
+            def to_ms(ns: Any) -> float | None:
+                if ns is None:
+                    return None
+                try:
+                    return float(ns) / 1_000_000.0
+                except (ValueError, TypeError):
+                    return None
+
+            total_duration_ms = to_ms(get_metric(response, "total_duration"))
+            load_duration_ms = to_ms(get_metric(response, "load_duration"))
+            prompt_eval_duration_ms = to_ms(get_metric(response, "prompt_eval_duration"))
+            generation_duration_ms = to_ms(get_metric(response, "eval_duration"))
+            
+            p_tokens = get_metric(response, "prompt_eval_count")
+            g_tokens = get_metric(response, "eval_count")
+            
+            # Calculate tokens per second
+            tokens_per_second = None
+            eval_ns = get_metric(response, "eval_duration")
+            if g_tokens is not None and eval_ns is not None:
+                try:
+                    gen_sec = float(eval_ns) / 1_000_000_000.0
+                    if gen_sec > 0:
+                        tokens_per_second = float(g_tokens) / gen_sec
+                except (ValueError, TypeError, ZeroDivisionError):
+                    pass
+
+            metrics = GenerationMetrics(
+                provider="ollama",
+                model=get_metric(response, "model") or self._model,
+                total_duration_ms=total_duration_ms,
+                load_duration_ms=load_duration_ms,
+                prompt_eval_duration_ms=prompt_eval_duration_ms,
+                generation_duration_ms=generation_duration_ms,
+                prompt_tokens=p_tokens,
+                generated_tokens=g_tokens,
+                tokens_per_second=tokens_per_second,
+                generation_profile=profile.value,
+                metadata=response if isinstance(response, dict) else getattr(response, "__dict__", {})
+            )
+
+            return GenerationResult(raw_response=response, metrics=metrics)
         except ResponseError as e:
             raise LLMError(f"Ollama API returned an error: {e}") from e
         except Exception as e:
@@ -112,7 +207,8 @@ class OllamaProvider(BaseLLMProvider):
         self,
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
-        tools: List[Dict[str, Any]] | None = None
+        tools: List[Dict[str, Any]] | None = None,
+        profile: GenerationProfile = GenerationProfile.BALANCED
     ) -> Iterator[Any]:
         """Performs a streaming chat completion request to the Ollama server.
 
@@ -120,6 +216,7 @@ class OllamaProvider(BaseLLMProvider):
             messages: Formatted message payload dictionaries.
             options: Optional execution options.
             tools: Optional provider-neutral tool schemas list.
+            profile: Optional semantic generation profile.
 
         Returns:
             Iterator[Any]: An iterator yielding raw Ollama response chunks.
@@ -131,8 +228,12 @@ class OllamaProvider(BaseLLMProvider):
             raise LLMError("Ollama client is not initialized. Call initialize() first.")
 
         kwargs: Dict[str, Any] = {}
-        if options:
-            kwargs["options"] = options
+        think_value, merged_options = self._adapt_generation_profile(profile, options)
+        if merged_options:
+            kwargs["options"] = merged_options
+        if think_value is not None:
+            kwargs["think"] = think_value
+
         if tools:
             adapted = []
             for t in tools:
