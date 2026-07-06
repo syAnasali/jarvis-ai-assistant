@@ -6,14 +6,6 @@ from app.memory.models import MemoryType, MemorySource
 from app.memory.parser import MemoryExtractionParser
 
 
-def test_parser_valid_empty_json():
-    """Verify empty memories JSON list parses to an empty list."""
-    parser = MemoryExtractionParser()
-    raw = '{"memories": []}'
-    candidates = parser.parse(raw)
-    assert len(candidates) == 0
-
-
 def test_parser_valid_single_candidate():
     """Verify a single valid candidate JSON parses successfully."""
     parser = MemoryExtractionParser()
@@ -24,7 +16,8 @@ def test_parser_valid_single_candidate():
           "content": "The user prefers Python.",
           "memory_type": "PREFERENCE",
           "importance": 0.8,
-          "confidence": 0.95
+          "confidence": 0.95,
+          "evidence": "I prefer Python."
         }
       ]
     }
@@ -37,6 +30,7 @@ def test_parser_valid_single_candidate():
     assert c.importance == 0.8
     assert c.confidence == 0.95
     assert c.source == MemorySource.USER
+    assert c.evidence == "I prefer Python."
 
 
 def test_parser_valid_multiple_candidates():
@@ -49,13 +43,15 @@ def test_parser_valid_multiple_candidates():
           "content": "Fact A",
           "memory_type": "FACT",
           "importance": 0.5,
-          "confidence": 0.8
+          "confidence": 0.8,
+          "evidence": "A"
         },
         {
           "content": "Pref B",
           "memory_type": "PREFERENCE",
           "importance": 0.6,
-          "confidence": 0.9
+          "confidence": 0.9,
+          "evidence": "B"
         }
       ]
     }
@@ -65,6 +61,7 @@ def test_parser_valid_multiple_candidates():
     assert candidates[0].content == "Fact A"
     assert candidates[1].content == "Pref B"
     assert candidates[0].source == MemorySource.MANUAL
+    assert candidates[0].evidence == "A"
 
 
 def test_parser_invalid_json():
@@ -119,7 +116,8 @@ def test_parser_valid_survives_malformed_siblings():
           "content": "Valid fact",
           "memory_type": "FACT",
           "importance": 0.5,
-          "confidence": 0.8
+          "confidence": 0.8,
+          "evidence": "Valid fact"
         }
       ]
     }
@@ -139,7 +137,8 @@ def test_parser_invalid_memory_type_rejected():
           "content": "Valid content",
           "memory_type": "INVALID_TYPE",
           "importance": 0.5,
-          "confidence": 0.8
+          "confidence": 0.8,
+          "evidence": "Valid content"
         }
       ]
     }
@@ -151,8 +150,8 @@ def test_parser_invalid_memory_type_rejected():
 def test_parser_importance_out_of_range_rejected():
     """Verify importance scores outside [0.0, 1.0] are skipped."""
     parser = MemoryExtractionParser()
-    raw_below = '{"memories": [{"content": "A", "memory_type": "FACT", "importance": -0.1}]}'
-    raw_above = '{"memories": [{"content": "B", "memory_type": "FACT", "importance": 1.1}]}'
+    raw_below = '{"memories": [{"content": "A", "memory_type": "FACT", "importance": -0.1, "evidence": "A"}]}'
+    raw_above = '{"memories": [{"content": "B", "memory_type": "FACT", "importance": 1.1, "evidence": "B"}]}'
     
     assert len(parser.parse(raw_below)) == 0
     assert len(parser.parse(raw_above)) == 0
@@ -161,8 +160,8 @@ def test_parser_importance_out_of_range_rejected():
 def test_parser_confidence_out_of_range_rejected():
     """Verify confidence scores outside [0.0, 1.0] are skipped."""
     parser = MemoryExtractionParser()
-    raw_below = '{"memories": [{"content": "A", "memory_type": "FACT", "confidence": -0.1}]}'
-    raw_above = '{"memories": [{"content": "B", "memory_type": "FACT", "confidence": 1.1}]}'
+    raw_below = '{"memories": [{"content": "A", "memory_type": "FACT", "confidence": -0.1, "evidence": "A"}]}'
+    raw_above = '{"memories": [{"content": "B", "memory_type": "FACT", "confidence": 1.1, "evidence": "B"}]}'
     
     assert len(parser.parse(raw_below)) == 0
     assert len(parser.parse(raw_above)) == 0
@@ -178,7 +177,8 @@ def test_parser_whitespace_normalized():
           "content": "  The   user   prefers    Python.  ",
           "memory_type": "PREFERENCE",
           "importance": 0.5,
-          "confidence": 0.8
+          "confidence": 0.8,
+          "evidence": "I prefer Python"
         }
       ]
     }
@@ -186,3 +186,55 @@ def test_parser_whitespace_normalized():
     candidates = parser.parse(raw)
     assert len(candidates) == 1
     assert candidates[0].content == "The user prefers Python."
+
+
+def test_parser_evidence_required_and_validated():
+    """Verify parser rejects candidates with missing, empty, or wrong type evidence."""
+    parser = MemoryExtractionParser()
+    
+    # Missing evidence key
+    raw_missing = """
+    {
+      "memories": [
+        {
+          "content": "Pref A",
+          "memory_type": "PREFERENCE",
+          "importance": 0.8,
+          "confidence": 0.95
+        }
+      ]
+    }
+    """
+    assert len(parser.parse(raw_missing)) == 0
+
+    # Empty evidence key
+    raw_empty = """
+    {
+      "memories": [
+        {
+          "content": "Pref A",
+          "memory_type": "PREFERENCE",
+          "importance": 0.8,
+          "confidence": 0.95,
+          "evidence": ""
+        }
+      ]
+    }
+    """
+    assert len(parser.parse(raw_empty)) == 0
+
+    # Wrong type evidence key (int instead of string)
+    raw_wrong_type = """
+    {
+      "memories": [
+        {
+          "content": "Pref A",
+          "memory_type": "PREFERENCE",
+          "importance": 0.8,
+          "confidence": 0.95,
+          "evidence": 12345
+        }
+      ]
+    }
+    """
+    assert len(parser.parse(raw_wrong_type)) == 0

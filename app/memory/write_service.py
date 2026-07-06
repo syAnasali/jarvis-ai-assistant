@@ -31,6 +31,9 @@ def normalize_content(text: str) -> str:
     return t.strip()
 
 
+from app.memory.validation import MemoryEvidenceValidator
+
+
 class MemoryWriteService:
     """Coordinates memory extraction, duplicate checks, validation, and database writes."""
 
@@ -51,6 +54,7 @@ class MemoryWriteService:
         self._memory_manager = memory_manager
         self._confidence_threshold = confidence_threshold
         self._secret_guard = SecretGuard()
+        self._evidence_validator = MemoryEvidenceValidator()
 
     def write_memories(self, text: str) -> MemoryWriteResult:
         """Extracts memories from user text, runs checks, and persists approved candidates.
@@ -93,6 +97,11 @@ class MemoryWriteService:
             raise MemorySystemError(f"Failed to list existing memories: {e}") from e
 
         for candidate in candidates:
+            # 1. Validate evidence
+            if not self._evidence_validator.validate(candidate, text):
+                rejected_count += 1
+                continue
+
             # 2. Check confidence threshold
             if candidate.confidence < self._confidence_threshold:
                 rejected_count += 1

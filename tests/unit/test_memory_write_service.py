@@ -17,7 +17,12 @@ from app.memory.manager import MemoryManager
 from app.memory.write_service import MemoryWriteService
 
 
-def create_test_candidate(content: str, conf: float = 0.9, memory_type: MemoryType = MemoryType.FACT) -> MemoryCandidate:
+def create_test_candidate(
+    content: str,
+    conf: float = 0.9,
+    memory_type: MemoryType = MemoryType.FACT,
+    evidence: str = "My name is Anas"
+) -> MemoryCandidate:
     """Helper to construct dummy candidates."""
     return MemoryCandidate(
         content=content,
@@ -25,6 +30,7 @@ def create_test_candidate(content: str, conf: float = 0.9, memory_type: MemoryTy
         importance=0.8,
         confidence=conf,
         source=MemorySource.USER,
+        evidence=evidence,
         metadata={}
     )
 
@@ -63,8 +69,8 @@ def test_write_service_no_candidates():
 def test_write_service_candidate_persisted():
     """Verify standard candidate is successfully persisted."""
     mock_extractor = MagicMock(spec=MemoryExtractor)
-    cand = create_test_candidate("The user prefers Python.")
-    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Query", candidate_count=1)
+    cand = create_test_candidate("The user's name is Anas.", evidence="My name is Anas")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="My name is Anas", candidate_count=1)
 
     mock_manager = MagicMock(spec=MemoryManager)
     mock_manager.list_memories.return_value = []
@@ -73,7 +79,7 @@ def test_write_service_candidate_persisted():
     mock_manager.create_memory.return_value = stored
 
     service = MemoryWriteService(mock_extractor, mock_manager)
-    res = service.write_memories("Query")
+    res = service.write_memories("My name is Anas")
 
     assert res.extracted_count == 1
     assert res.persisted_count == 1
@@ -91,12 +97,12 @@ def test_write_service_low_confidence_candidate_rejected():
     """Verify candidate below confidence threshold is rejected."""
     mock_extractor = MagicMock(spec=MemoryExtractor)
     # Default threshold: 0.8. Confidence: 0.75
-    cand = create_test_candidate("Fact", conf=0.75)
-    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Q", candidate_count=1)
+    cand = create_test_candidate("The user's name is Anas", conf=0.75, evidence="My name is Anas")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="My name is Anas", candidate_count=1)
 
     mock_manager = MagicMock(spec=MemoryManager)
     service = MemoryWriteService(mock_extractor, mock_manager, confidence_threshold=0.8)
-    res = service.write_memories("Q")
+    res = service.write_memories("My name is Anas")
 
     assert res.persisted_count == 0
     assert res.rejected_count == 1
@@ -106,8 +112,7 @@ def test_write_service_low_confidence_candidate_rejected():
 def test_write_service_exact_and_normalized_duplicates_detected():
     """Verify case, whitespace, and punctuation variations are detected as duplicates."""
     mock_extractor = MagicMock(spec=MemoryExtractor)
-    # Existing memory: "The user prefers Python."
-    existing = create_test_memory("The user prefers Python.")
+    existing = create_test_memory("The user prefers Python.", MemoryType.PREFERENCE)
     
     mock_manager = MagicMock(spec=MemoryManager)
     mock_manager.list_memories.return_value = [existing]
@@ -121,11 +126,11 @@ def test_write_service_exact_and_normalized_duplicates_detected():
     ]
 
     for case in dup_cases:
-        cand = create_test_candidate(case)
-        mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Q", candidate_count=1)
+        cand = create_test_candidate(case, memory_type=MemoryType.PREFERENCE, evidence="I prefer Python")
+        mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="I prefer Python", candidate_count=1)
         
         service = MemoryWriteService(mock_extractor, mock_manager)
-        res = service.write_memories("Q")
+        res = service.write_memories("I prefer Python")
         
         assert res.duplicate_count == 1, f"Failed duplicate check for case: '{case}'"
         assert res.persisted_count == 0
@@ -134,8 +139,8 @@ def test_write_service_exact_and_normalized_duplicates_detected():
 def test_write_service_same_content_different_type_not_duplicate():
     """Verify identical content but different MemoryType is NOT suppressed as duplicate."""
     mock_extractor = MagicMock(spec=MemoryExtractor)
-    cand = create_test_candidate("Anas is building Jarvis.", memory_type=MemoryType.PROJECT)
-    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Q", candidate_count=1)
+    cand = create_test_candidate("Anas is building Jarvis.", memory_type=MemoryType.PROJECT, evidence="I am building Jarvis")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="I am building Jarvis", candidate_count=1)
 
     # Existing memory of type FACT
     existing = create_test_memory("Anas is building Jarvis.", memory_type=MemoryType.FACT)
@@ -146,47 +151,39 @@ def test_write_service_same_content_different_type_not_duplicate():
     mock_manager.create_memory.return_value = stored
 
     service = MemoryWriteService(mock_extractor, mock_manager)
-    res = service.write_memories("Q")
+    res = service.write_memories("I am building Jarvis")
 
-    # Should persist because the type is PROJECT, and existing is FACT
     assert res.persisted_count == 1
     assert res.duplicate_count == 0
 
 
 def test_write_service_near_duplicate_conservative_deduplication():
-    """Verify near-duplicates with identical token sets are resolved, but different keywords (values) are preserved."""
+    """Verify near-duplicates with identical token sets are resolved, but different keywords are preserved."""
     mock_extractor = MagicMock(spec=MemoryExtractor)
     
-    # Case 1: Same token sets, minor ordering/formatting near-duplicate
-    # Existing: "Anas prefers Python."
-    # Candidate: "Python prefers Anas." (meaning differs, but token sets identical)
-    existing1 = create_test_memory("Anas prefers Python.")
-    cand1 = create_test_candidate("Python prefers Anas.")
+    existing1 = create_test_memory("Anas prefers Python.", MemoryType.PREFERENCE)
+    cand1 = create_test_candidate("Python prefers Anas.", memory_type=MemoryType.PREFERENCE, evidence="I prefer Python")
     
     mock_manager = MagicMock(spec=MemoryManager)
     mock_manager.list_memories.return_value = [existing1]
     
     service = MemoryWriteService(mock_extractor, mock_manager)
-    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand1,), source_text="Q", candidate_count=1)
-    res1 = service.write_memories("Q")
-    # High similarity (>0.85) + identical tokens -> Suppressed as duplicate
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand1,), source_text="I prefer Python", candidate_count=1)
+    res1 = service.write_memories("I prefer Python")
     assert res1.duplicate_count == 1
     assert res1.persisted_count == 0
 
     # Case 2: Different values (Java vs Python) - must be preserved
-    # Existing: "The user prefers Python."
-    # Candidate: "The user prefers Java."
-    existing2 = create_test_memory("The user prefers Python.")
-    cand2 = create_test_candidate("The user prefers Java.")
+    existing2 = create_test_memory("The user prefers Python.", MemoryType.PREFERENCE)
+    cand2 = create_test_candidate("The user prefers Java.", memory_type=MemoryType.PREFERENCE, evidence="I prefer Java")
     mock_manager.list_memories.return_value = [existing2]
     
     stored = Memory("m_2", cand2.content, cand2.memory_type, datetime.now(timezone.utc), datetime.now(timezone.utc), cand2.importance, cand2.source, {})
     mock_manager.create_memory.return_value = stored
     
-    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand2,), source_text="Q", candidate_count=1)
-    res2 = service.write_memories("Q")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand2,), source_text="I prefer Java", candidate_count=1)
+    res2 = service.write_memories("I prefer Java")
     
-    # Should be preserved because token sets differ (Java vs Python)
     assert res2.persisted_count == 1
     assert res2.duplicate_count == 0
 
@@ -207,9 +204,9 @@ def test_write_service_secrets_rejected():
     service = MemoryWriteService(mock_extractor, mock_manager)
 
     for secret in secret_contents:
-        cand = create_test_candidate(secret)
-        mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Q", candidate_count=1)
-        res = service.write_memories("Q")
+        cand = create_test_candidate(secret, evidence=secret)
+        mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text=secret, candidate_count=1)
+        res = service.write_memories(secret)
         
         assert res.persisted_count == 0
         assert res.rejected_count == 1
@@ -219,8 +216,8 @@ def test_write_service_secrets_rejected():
 def test_write_service_repository_failure_propagates():
     """Verify database write failure throws MemoryPersistenceError."""
     mock_extractor = MagicMock(spec=MemoryExtractor)
-    cand = create_test_candidate("The user prefers Python.")
-    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Q", candidate_count=1)
+    cand = create_test_candidate("The user prefers Python.", memory_type=MemoryType.PREFERENCE, evidence="I prefer Python")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="I prefer Python", candidate_count=1)
 
     mock_manager = MagicMock(spec=MemoryManager)
     mock_manager.list_memories.return_value = []
@@ -229,4 +226,21 @@ def test_write_service_repository_failure_propagates():
     service = MemoryWriteService(mock_extractor, mock_manager)
     
     with pytest.raises(MemoryPersistenceError):
-        service.write_memories("Q")
+        service.write_memories("I prefer Python")
+
+
+def test_write_service_fabricated_evidence_rejected():
+    """Verify candidate with evidence not present in source is rejected."""
+    mock_extractor = MagicMock(spec=MemoryExtractor)
+    cand = create_test_candidate("The user's name is Anas.", evidence="My name is Anas")
+    # Source text does NOT contain "My name is Anas"
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="Hello world", candidate_count=1)
+
+    mock_manager = MagicMock(spec=MemoryManager)
+    mock_manager.list_memories.return_value = []
+
+    service = MemoryWriteService(mock_extractor, mock_manager)
+    res = service.write_memories("Hello world")
+
+    assert res.persisted_count == 0
+    assert res.rejected_count == 1

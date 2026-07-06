@@ -1,5 +1,6 @@
 """Ollama LLM provider implementation."""
 
+import threading
 from collections.abc import Iterator
 from typing import List, Dict, Any
 from ollama import Client, ResponseError
@@ -21,6 +22,7 @@ class OllamaProvider(BaseLLMProvider):
         self._host = host
         self._model = model
         self._client: Client | None = None
+        self._lock = threading.Lock()
 
     def initialize(self) -> None:
         """Verifies server connectivity and loads/verifies the configured model.
@@ -156,11 +158,12 @@ class OllamaProvider(BaseLLMProvider):
             kwargs["tools"] = adapted
 
         try:
-            response = self._client.chat(
-                model=self._model,
-                messages=messages,
-                **kwargs
-            )
+            with self._lock:
+                response = self._client.chat(
+                    model=self._model,
+                    messages=messages,
+                    **kwargs
+                )
             
             # Helper to retrieve metric safely
             def get_metric(obj: Any, key: str) -> Any:
@@ -266,6 +269,7 @@ class OllamaProvider(BaseLLMProvider):
                 })
             kwargs["tools"] = adapted
 
+        self._lock.acquire()
         try:
             stream = self._client.chat(
                 model=self._model,
@@ -273,11 +277,20 @@ class OllamaProvider(BaseLLMProvider):
                 stream=True,
                 **kwargs
             )
-            for chunk in stream:
-                yield chunk
+            
+            def generator_wrapper() -> Iterator[Any]:
+                try:
+                    for chunk in stream:
+                        yield chunk
+                finally:
+                    self._lock.release()
+
+            return generator_wrapper()
         except ResponseError as e:
+            self._lock.release()
             raise LLMError(f"Ollama API returned a streaming error: {e}") from e
         except Exception as e:
+            self._lock.release()
             raise LLMError(f"Ollama streaming generation failed: {e}") from e
 
     def health_check(self) -> Dict[str, Any]:

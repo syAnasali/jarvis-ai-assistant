@@ -31,6 +31,7 @@ from app.memory.context import MemoryContextBuilder
 from app.memory.extraction import LLMMemoryExtractor
 from app.memory.parser import MemoryExtractionParser
 from app.memory.write_service import MemoryWriteService
+from app.memory.coordinator import MemoryWriteCoordinator
 
 # Configure logging
 JarvisLogger.get_logger("agent_controller")
@@ -68,6 +69,7 @@ def main():
 
         extractor1 = LLMMemoryExtractor(llm_manager=llm_manager)
         write_service1 = MemoryWriteService(extractor=extractor1, memory_manager=manager1)
+        coordinator1 = MemoryWriteCoordinator(write_service=write_service1)
 
         registry1 = ToolRegistry()
         executor1 = ToolExecutor(registry1)
@@ -84,7 +86,7 @@ def main():
             agent_runner=runner1,
             retriever=retriever1,
             context_builder=context_builder1,
-            write_service=write_service1
+            coordinator=coordinator1
         )
 
         user_statement = "My name is Anas."
@@ -101,13 +103,18 @@ def main():
         resp1 = controller1.process_request(req1)
         phase1_response_text = resp1.text
         
+        # Flush and shutdown coordinator to ensure background threads complete write tasks
+        print("Flushing and shutting down Coordinator 1...")
+        coordinator1.flush()
+        coordinator1.shutdown()
+
         # Verify count in repository
         phase1_persisted_count = repository1.count()
         print(f"Phase 1 complete. Response: '{phase1_response_text}'")
         print(f"Phase 1 memories persisted in SQLite: {phase1_persisted_count}\n")
 
         # Destroy pipeline 1
-        del repository1, manager1, retriever1, context_builder1, extractor1, write_service1, controller1
+        del repository1, manager1, retriever1, context_builder1, extractor1, write_service1, coordinator1, controller1
         print("Pipeline 1 destroyed/closed.\n")
 
         # ----------------------------------------------------------
@@ -121,6 +128,7 @@ def main():
 
         extractor2 = LLMMemoryExtractor(llm_manager=llm_manager)
         write_service2 = MemoryWriteService(extractor=extractor2, memory_manager=manager2)
+        coordinator2 = MemoryWriteCoordinator(write_service=write_service2)
 
         registry2 = ToolRegistry()
         executor2 = ToolExecutor(registry2)
@@ -137,7 +145,7 @@ def main():
             agent_runner=runner2,
             retriever=retriever2,
             context_builder=context_builder2,
-            write_service=write_service2
+            coordinator=coordinator2
         )
 
         query = "What is my name?"
@@ -157,6 +165,10 @@ def main():
 
         resp2 = controller2.process_request(req2)
         phase2_response_text = resp2.text
+
+        # Flush and shutdown coordinator 2
+        coordinator2.flush()
+        coordinator2.shutdown()
 
         print(f"Phase 2 complete. Response: '{phase2_response_text}'\n")
 

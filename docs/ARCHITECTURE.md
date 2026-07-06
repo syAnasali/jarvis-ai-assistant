@@ -113,14 +113,16 @@ The memory subsystem provides a persistent storage foundation for long-term user
 - **`LexicalMemoryRetriever`**: Located in `app/memory/retrieval.py`. Performs lexical matching against stored memories using token-based overlap and importance score ranking.
 - **`MemoryContextBuilder`**: Located in `app/memory/context.py`. Formats matched memories into a structured markdown block (`[RELEVANT LONG-TERM MEMORY]`) to inject into the system prompt.
 - **`LLMMemoryExtractor`**: Located in `app/memory/extraction.py`. Uses the LLM under a dedicated low-temperature deterministic profile (`MEMORY_EXTRACTION`) to parse user request text for durable user facts or preferences.
-- **`MemoryExtractionParser`**: Located in `app/memory/parser.py`. Robustly parses LLM response text into structured `MemoryCandidate` lists, isolating malformed JSON items.
-- **`MemoryWriteService`**: Located in `app/memory/write_service.py`. Coordinates candidates validation, confidence filtering, Secret Guard checks, exact/near-duplicate detection, and database persistence.
+- **`MemoryExtractionParser`**: Located in `app/memory/parser.py`. Robustly parses LLM response text into structured `MemoryCandidate` lists (now containing exact supporting verbatim evidence strings), isolating malformed JSON items.
+- **`MemoryEvidenceValidator`**: Located in `app/memory/validation.py`. Validates candidate evidence verbatim matching and implements strict claim-support conservatism (requiring first-person references and rejecting imperative verb-initiated requests) to prevent false positives.
+- **`MemoryWriteService`**: Located in `app/memory/write_service.py`. Coordinates candidates validation, evidence checking, confidence filtering, Secret Guard checks, exact/near-duplicate detection, and database persistence.
+- **`MemoryWriteCoordinator`**: Located in `app/memory/coordinator.py`. Manages asynchronous memory extraction and writes on a single background worker thread (via `ThreadPoolExecutor`), preventing background writes from blocking the user-visible response path.
 - **`SecretGuard`**: Located in `app/memory/guard.py`. Deterministically matches common credentials patterns (bearer tokens, passwords, private keys, API keys) to prevent persisting them.
 
 ### Integration & Execution Boundary
 - Memory retrieval occurs prior to execution planning. The retrieved context is dynamically injected at the system prompt level once per turn.
-- Memory write operations execute *after* the assistant response has successfully generated and been saved to the conversation log.
-- Extraction failures or validation rejections are fully isolated: they log errors but do not crash the chat flow or cause the overall user request to fail.
+- Memory write operations are submitted to `MemoryWriteCoordinator` immediately after the assistant response is successfully generated and saved to the conversation log. The call returns instantly without blocking.
+- Extraction failures or validation rejections are fully isolated: they log metrics and errors but do not crash the chat flow or cause the overall user request to fail.
 
 ---
 
@@ -164,7 +166,8 @@ The runtime processes transitions through states governed by `ApplicationState`:
    - The CLI reads input, queries the agent controller, prints assistant outputs, and continues.
 3. **Shutdown**:
    - Catching `exit`/`quit`/`bye` or standard interrupts (`KeyboardInterrupt`, `EOFError`) breaks the loop and calls `shutdown()`.
-   - State transitions to `STOPPING`. The active LLM provider shutdown method is triggered.
+   - State transitions to `STOPPING`. The `MemoryWriteCoordinator` is shut down first, which blocks to flush and persist all pending background write jobs.
+   - After memory persistence is finalized, the active LLM provider shutdown method is triggered to release connection streams.
    - References are cleared, and the application terminates in the `STOPPED` state.
 
 ---

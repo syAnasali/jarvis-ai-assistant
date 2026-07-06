@@ -15,6 +15,7 @@ from app.agent.metrics import AgentExecutionMetrics
 from app.memory.interfaces import MemoryRetriever
 from app.memory.context import MemoryContextBuilder
 from app.memory.models import Memory, MemoryType, MemorySource, MemoryMatch, MemoryRetrievalResult
+from app.memory.coordinator import MemoryWriteCoordinator
 
 
 def test_controller_memory_retrieval_and_injection():
@@ -148,8 +149,8 @@ def test_controller_retrieval_failure_propagates():
         controller.process_request(request)
 
 
-def test_controller_memory_write_success():
-    """Verify write_service is called after assistant response is stored and metrics are updated."""
+def test_controller_memory_coordinator_schedule_success():
+    """Verify that AgentController schedules request.text exactly once on successful response."""
     mock_llm_manager = MagicMock(spec=LLMManager)
     mock_retriever = MagicMock(spec=MemoryRetriever)
     mock_retriever.retrieve.return_value = MemoryRetrievalResult("Q", (), 0, 0)
@@ -160,11 +161,8 @@ def test_controller_memory_write_success():
     exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
     mock_runner.run.return_value = AgentRunResult("Final response", exec_metrics)
 
-    from app.memory.write_service import MemoryWriteService
-    from app.memory.models import MemoryWriteResult
-    mock_write_service = MagicMock(spec=MemoryWriteService)
-    mock_write = MemoryWriteResult(extracted_count=2, persisted_count=1, duplicate_count=0, rejected_count=1, persisted_memory_ids=("m_1",))
-    mock_write_service.write_memories.return_value = mock_write
+    mock_coordinator = MagicMock(spec=MemoryWriteCoordinator)
+    mock_coordinator.submit.return_value = True
 
     conversation = Conversation()
     context_manager = ContextManager()
@@ -176,56 +174,104 @@ def test_controller_memory_write_success():
         agent_runner=mock_runner,
         retriever=mock_retriever,
         context_builder=mock_context_builder,
-        write_service=mock_write_service
+        coordinator=mock_coordinator
     )
 
     request = AgentRequest("req_1", "User query", "terminal")
-    response = controller.process_request(request)
-
-    # 1. Verify write service called with request text
-    mock_write_service.write_memories.assert_called_once_with("User query")
-
-    # 2. Verify metrics updated
-    metrics = response.metadata.get("execution_metrics")
-    assert metrics is not None
-    assert metrics.memories_extracted == 2
-    assert metrics.memories_persisted == 1
-
-
-def test_controller_memory_write_failure_isolated():
-    """Verify memory write failures are isolated and do not crash the user response flow."""
-    mock_llm_manager = MagicMock(spec=LLMManager)
-    mock_retriever = MagicMock(spec=MemoryRetriever)
-    mock_retriever.retrieve.return_value = MemoryRetrievalResult("Q", (), 0, 0)
-    mock_context_builder = MagicMock(spec=MemoryContextBuilder)
-    mock_context_builder.build.return_value = ""
-
-    mock_runner = MagicMock(spec=AgentRunner)
-    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
-    mock_runner.run.return_value = AgentRunResult("Final response", exec_metrics)
-
-    from app.memory.write_service import MemoryWriteService
-    from app.core.exceptions import MemorySystemError
-    mock_write_service = MagicMock(spec=MemoryWriteService)
-    mock_write_service.write_memories.side_effect = MemorySystemError("Extraction failed")
-
-    conversation = Conversation()
-    context_manager = ContextManager()
-
-    controller = AgentController(
-        conversation=conversation,
-        context_manager=context_manager,
-        llm_manager=mock_llm_manager,
-        agent_runner=mock_runner,
-        retriever=mock_retriever,
-        context_builder=mock_context_builder,
-        write_service=mock_write_service
-    )
-
-    request = AgentRequest("req_1", "User query", "terminal")
-    # Should complete successfully and NOT raise MemorySystemError
     response = controller.process_request(request)
 
     assert response.text == "Final response"
-    mock_write_service.write_memories.assert_called_once_with("User query")
+    
+    # 1. Verify coordinator.submit is called with exactly request.text
+    mock_coordinator.submit.assert_called_once_with("User query")
+
+
+def test_controller_memory_coordinator_scheduling_failure_isolated():
+    """Verify that if the coordinator fails to submit or raises, the response is still returned."""
+    mock_llm_manager = MagicMock(spec=LLMManager)
+    mock_retriever = MagicMock(spec=MemoryRetriever)
+    mock_retriever.retrieve.return_value = MemoryRetrievalResult("Q", (), 0, 0)
+    mock_context_builder = MagicMock(spec=MemoryContextBuilder)
+    mock_context_builder.build.return_value = ""
+
+    mock_runner = MagicMock(spec=AgentRunner)
+    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
+    mock_runner.run.return_value = AgentRunResult("Final response", exec_metrics)
+
+    mock_coordinator = MagicMock(spec=MemoryWriteCoordinator)
+    mock_coordinator.submit.side_effect = RuntimeError("Executor saturated")
+
+    conversation = Conversation()
+    context_manager = ContextManager()
+
+    controller = AgentController(
+        conversation=conversation,
+        context_manager=context_manager,
+        llm_manager=mock_llm_manager,
+        agent_runner=mock_runner,
+        retriever=mock_retriever,
+        context_builder=mock_context_builder,
+        coordinator=mock_coordinator
+    )
+
+    request = AgentRequest("req_1", "User query", "terminal")
+    response = controller.process_request(request)
+
+    assert response.text == "Final response"
+    mock_coordinator.submit.assert_called_once_with("User query")
+
+
+def test_controller_memory_coordinator_streaming_schedule():
+    """Verify that process_request_stream schedules memory only after successful stream completion."""
+    mock_llm_manager = MagicMock(spec=LLMManager)
+    mock_retriever = MagicMock(spec=MemoryRetriever)
+    mock_retriever.retrieve.return_value = MemoryRetrievalResult("Q", (), 0, 0)
+    mock_context_builder = MagicMock(spec=MemoryContextBuilder)
+    mock_context_builder.build.return_value = ""
+
+    mock_runner = MagicMock(spec=AgentRunner)
+    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
+
+    class MockIterator:
+        def __init__(self):
+            self.chunks = ["Chunk 1", "Chunk 2"]
+            self.index = 0
+        def __iter__(self):
+            return self
+        def __next__(self):
+            if self.index < len(self.chunks):
+                val = self.chunks[self.index]
+                self.index += 1
+                return val
+            raise StopIteration(exec_metrics)
+
+    mock_runner.run_stream.return_value = MockIterator()
+
+    mock_coordinator = MagicMock(spec=MemoryWriteCoordinator)
+
+    conversation = Conversation()
+    context_manager = ContextManager()
+
+    controller = AgentController(
+        conversation=conversation,
+        context_manager=context_manager,
+        llm_manager=mock_llm_manager,
+        agent_runner=mock_runner,
+        retriever=mock_retriever,
+        context_builder=mock_context_builder,
+        coordinator=mock_coordinator
+    )
+
+    request = AgentRequest("req_1", "User query", "terminal")
+    stream = controller.process_request_stream(request)
+
+    # Before consuming the stream, coordinator should NOT be called
+    mock_coordinator.submit.assert_not_called()
+
+    # Consume the stream
+    chunks = list(stream)
+    assert chunks == ["Chunk 1", "Chunk 2"]
+
+    # After consumption finishes, coordinator should be called exactly once
+    mock_coordinator.submit.assert_called_once_with("User query")
 

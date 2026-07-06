@@ -137,6 +137,7 @@ class MemoryCandidate:
     importance: float
     confidence: float
     source: MemorySource
+    evidence: str
     metadata: Dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
@@ -144,6 +145,11 @@ class MemoryCandidate:
             raise MemoryCandidateValidationError("Memory content must be a string.")
         if not self.content or not self.content.strip():
             raise MemoryCandidateValidationError("Memory content must not be empty or whitespace-only.")
+
+        if not isinstance(self.evidence, str):
+            raise MemoryCandidateValidationError("Memory candidate evidence must be a string.")
+        if not self.evidence or not self.evidence.strip():
+            raise MemoryCandidateValidationError("Memory candidate evidence must not be empty or whitespace-only.")
 
         try:
             imp = float(self.importance)

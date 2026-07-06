@@ -44,6 +44,7 @@ jarvis-ai-assistant/
 │   │   └── logger.py                 # Loguru log setup handlers
 │   ├── memory/                       # Persistent memory domain and SQLite store
 │   │   ├── __init__.py               # Package initialization and exports
+│   │   ├── coordinator.py            # MemoryWriteCoordinator for background writes
 │   │   ├── context.py                # MemoryContextBuilder for prompt formatting
 │   │   ├── extraction.py             # LLMMemoryExtractor
 │   │   ├── guard.py                  # SecretGuard for credential filtering
@@ -53,6 +54,7 @@ jarvis-ai-assistant/
 │   │   ├── parser.py                 # MemoryExtractionParser
 │   │   ├── repository.py             # SQLiteMemoryRepository implementation
 │   │   ├── retrieval.py              # LexicalMemoryRetriever
+│   │   ├── validation.py             # MemoryEvidenceValidator for exact-evidence constraints
 │   │   └── write_service.py          # MemoryWriteService
 │   ├── prompts/                      # External prompt files (reserved)
 │   │   └── __init__.py               # Reserved for future implementation
@@ -137,7 +139,9 @@ Manages durable facts, projects, preferences, and assistant context persistence.
 - **`context.py`**: Compiles matches into system prompt context with constraint enforcement.
 - **`extraction.py`**: LLM memory candidate extractor using a dedicated profile.
 - **`parser.py`**: Parser to extract memory list JSON.
+- **`validation.py`**: MemoryEvidenceValidator enforcing verbatim checking and claim-support conservatism.
 - **`write_service.py`**: Coordinates extraction, confidence filter, secret guard, duplicate checks, and writes.
+- **`coordinator.py`**: MemoryWriteCoordinator orchestrating background async executions and resource serialization.
 - **`guard.py`**: Narrow deterministic pattern matching secret guard.
 
 ### `app/utils/`
@@ -164,4 +168,6 @@ The following directories are empty placeholder packages (except for `__init__.p
   - **`test_memory_extraction.py`**: Memory extraction diagnostics.
   - **`test_memory_write.py`**: Memory write service diagnostics.
   - **`test_memory_restart.py`**: Cross-restart memory persistence diagnostics.
+  - **`test_memory_extraction_precision.py`**: Verbatim evidence and claim-support conservatism diagnostic.
+  - **`test_memory_response_latency.py`**: Measure response latency and verify background non-blocking execution.
 - **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, and memory write service.

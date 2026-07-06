@@ -74,6 +74,7 @@ class MemoryExtractionParser:
 
                 importance_val = item.get("importance", 0.5)
                 confidence_val = item.get("confidence", 1.0)
+                evidence_val = item.get("evidence")
 
                 # Construct MemoryCandidate, catching any validation errors
                 candidates.append(
@@ -83,6 +84,7 @@ class MemoryExtractionParser:
                         importance=float(importance_val),
                         confidence=float(confidence_val),
                         source=source,
+                        evidence=evidence_val,
                         metadata={}
                     )
                 )

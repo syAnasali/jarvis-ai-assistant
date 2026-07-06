@@ -148,6 +148,7 @@ class Application:
         from app.memory.parser import MemoryExtractionParser
         from app.memory.extraction import LLMMemoryExtractor
         from app.memory.write_service import MemoryWriteService
+        from app.memory.coordinator import MemoryWriteCoordinator
         from app.core.exceptions import ApplicationStartupError
 
         try:
@@ -160,6 +161,7 @@ class Application:
             extraction_parser = MemoryExtractionParser()
             extractor = LLMMemoryExtractor(llm_manager=llm_manager)
             write_service = MemoryWriteService(extractor=extractor, memory_manager=memory_manager)
+            coordinator = MemoryWriteCoordinator(write_service=write_service)
 
             # Register in container
             self.container.register("memory_repository", repository)
@@ -169,6 +171,7 @@ class Application:
             self.container.register("memory_extraction_parser", extraction_parser)
             self.container.register("memory_extractor", extractor)
             self.container.register("memory_write_service", write_service)
+            self.container.register("memory_coordinator", coordinator)
         except Exception as e:
             self.logger.critical(f"Failed to initialize memory subsystem: {e}")
             raise ApplicationStartupError(f"Memory subsystem initialization failed: {e}") from e
@@ -207,7 +210,7 @@ class Application:
             agent_runner=agent_runner,
             retriever=retriever,
             context_builder=context_builder,
-            write_service=write_service
+            coordinator=coordinator
         )
         self.container.register("controller", controller)
 
@@ -272,6 +275,15 @@ class Application:
 
     def _shutdown_services(self) -> None:
         """Shuts down all active registered background connections."""
+        # 1. Shutdown memory coordinator first (flushes pending jobs)
+        try:
+            if self.container.has("memory_coordinator"):
+                coordinator = self.container.get("memory_coordinator")
+                coordinator.shutdown()
+        except Exception as e:
+            self.logger.error(f"Error shutting down memory coordinator: {e}")
+
+        # 2. Shutdown active LLM provider afterward
         try:
             if self.container.has("llm_manager"):
                 llm_manager = self.container.get("llm_manager")
