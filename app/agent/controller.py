@@ -16,6 +16,8 @@ from app.utils.id_generator import generate_message_id, generate_response_id
 from app.agent.planner import Planner, ExecutionPlan
 from app.agent.executor import Executor
 from app.agent.runner import AgentRunner
+from app.memory.interfaces import MemoryRetriever
+from app.memory.context import MemoryContextBuilder
 
 logger = JarvisLogger.get_logger("agent_controller")
 
@@ -28,7 +30,9 @@ class AgentController:
         conversation: Conversation,
         context_manager: ContextManager,
         llm_manager: LLMManager,
-        agent_runner: AgentRunner | None = None
+        agent_runner: AgentRunner | None = None,
+        retriever: MemoryRetriever | None = None,
+        context_builder: MemoryContextBuilder | None = None
     ) -> None:
         """Initializes the AgentController.
 
@@ -37,6 +41,8 @@ class AgentController:
             context_manager: The active session ContextManager.
             llm_manager: The LLM manager to route calls.
             agent_runner: The AgentRunner to orchestrate tool calling loops.
+            retriever: Optional MemoryRetriever implementation.
+            context_builder: Optional MemoryContextBuilder implementation.
         """
         self.conversation = conversation
         self.context_manager = context_manager
@@ -46,6 +52,8 @@ class AgentController:
         self._planner = Planner()
         self._executor = Executor(llm_manager)
         self._runner = agent_runner
+        self._retriever = retriever
+        self._context_builder = context_builder
 
     def process_request(self, request: AgentRequest) -> AgentResponse:
         """Processes an incoming user request using the active context.
@@ -65,18 +73,50 @@ class AgentController:
             if plan.use_tools or plan.use_memory:
                 raise NotImplementedError("Tool and Memory execution paths are not yet supported directly.")
 
+            # Memory retrieval logic
+            memory_matches_ids = ()
+            memory_duration_ms = 0.0
+            memory_context = ""
+
+            if self._retriever is not None and self._context_builder is not None:
+                mem_start = time.perf_counter()
+                try:
+                    ret_result = self._retriever.retrieve(request.text)
+                    memory_matches_ids = tuple(m.memory.memory_id for m in ret_result.matches)
+                    memory_context = self._context_builder.build(list(ret_result.matches))
+                    memory_duration_ms = (time.perf_counter() - mem_start) * 1000
+                    
+                    logger.info(
+                        f"Memory retrieval completed: "
+                        f"candidates={ret_result.total_candidates}, "
+                        f"selected={ret_result.selected_count}, "
+                        f"duration_ms={memory_duration_ms:.2f}"
+                    )
+                    logger.debug(f"Selected memory IDs: {memory_matches_ids}")
+                except Exception as me:
+                    logger.error(f"Memory retrieval failed: {me}")
+                    raise
+
             exec_metrics = None
             if plan.use_llm and self._runner is not None:
                 logger.info("Executing via AgentRunner action loop...")
-                run_result = self._runner.run(request, formatted_messages)
+                run_result = self._runner.run(request, formatted_messages, memory_context=memory_context)
+                
+                # Merge the memory retrieval diagnostics into execution metrics
+                from dataclasses import replace
+                exec_metrics = replace(
+                    run_result.execution_metrics,
+                    memory_matches=memory_matches_ids,
+                    memory_retrieval_duration_ms=memory_duration_ms
+                )
+                
                 agent_response = AgentResponse(
                     response_id=generate_response_id(),
                     text=run_result.text,
                     tool_calls=[],
                     success=True,
-                    metadata={"execution_metrics": run_result.execution_metrics}
+                    metadata={"execution_metrics": exec_metrics}
                 )
-                exec_metrics = run_result.execution_metrics
             else:
                 logger.info("Executing via Executor...")
                 raw_response = self._executor.execute(plan, formatted_messages)
@@ -135,11 +175,35 @@ class AgentController:
             if plan.use_tools or plan.use_memory:
                 raise NotImplementedError("Tool and Memory execution paths are not yet supported for streaming.")
 
+            # Memory retrieval logic
+            memory_matches_ids = ()
+            memory_duration_ms = 0.0
+            memory_context = ""
+
+            if self._retriever is not None and self._context_builder is not None:
+                mem_start = time.perf_counter()
+                try:
+                    ret_result = self._retriever.retrieve(request.text)
+                    memory_matches_ids = tuple(m.memory.memory_id for m in ret_result.matches)
+                    memory_context = self._context_builder.build(list(ret_result.matches))
+                    memory_duration_ms = (time.perf_counter() - mem_start) * 1000
+                    
+                    logger.info(
+                        f"Memory retrieval completed: "
+                        f"candidates={ret_result.total_candidates}, "
+                        f"selected={ret_result.selected_count}, "
+                        f"duration_ms={memory_duration_ms:.2f}"
+                    )
+                    logger.debug(f"Selected memory IDs: {memory_matches_ids}")
+                except Exception as me:
+                    logger.error(f"Memory retrieval failed: {me}")
+                    raise
+
             accumulator = []
             exec_metrics = None
             if plan.use_llm and self._runner is not None:
                 logger.info("Streaming execution started via AgentRunner...")
-                stream = self._runner.run_stream(request, formatted_messages)
+                stream = self._runner.run_stream(request, formatted_messages, memory_context=memory_context)
                 
                 iterator = iter(stream)
                 while True:
@@ -149,7 +213,12 @@ class AgentController:
                             accumulator.append(parsed_text)
                             yield parsed_text
                     except StopIteration as e:
-                        exec_metrics = e.value
+                        from dataclasses import replace
+                        exec_metrics = replace(
+                            e.value,
+                            memory_matches=memory_matches_ids,
+                            memory_retrieval_duration_ms=memory_duration_ms
+                        )
                         break
             else:
                 logger.info("Streaming execution started via Executor...")

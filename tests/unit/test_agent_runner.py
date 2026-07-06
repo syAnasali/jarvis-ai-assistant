@@ -456,13 +456,67 @@ def test_agent_runner_injects_tool_use_policy_exactly_once():
 
     # Check first turn messages
     first_messages = provider.calls[0][0]
-    # Check that system prompt is first message
-    assert first_messages[0]["role"] == "system"
-    assert TOOL_USE_POLICY_MARKER in first_messages[0]["content"]
+    # Check system messages
+    system_messages = [msg for msg in first_messages if msg["role"] == "system"]
+    assert len(system_messages) == 2
+    assert "You are Jarvis" in system_messages[0]["content"]
+    assert TOOL_USE_POLICY_MARKER in system_messages[1]["content"]
 
     # Check second turn messages
     second_messages = provider.calls[1][0]
     # Verify tool policy is still there exactly once
     system_messages = [msg for msg in second_messages if msg["role"] == "system"]
-    assert len(system_messages) == 1
-    assert TOOL_USE_POLICY_MARKER in system_messages[0]["content"]
+    assert len(system_messages) == 2
+    assert "You are Jarvis" in system_messages[0]["content"]
+    assert TOOL_USE_POLICY_MARKER in system_messages[1]["content"]
+
+
+def test_agent_runner_memory_coexistence():
+    """Verifies that system prompt, tool-use policy, and memory context coexist correctly and are not duplicated."""
+    provider = FakeProvider()
+    provider.responses.append({
+        "message": {
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"function": {"name": "safe_test", "arguments": {"arg": "ok"}}}]
+        }
+    })
+    provider.responses.append({"message": {"role": "assistant", "content": "Final response text"}})
+
+    llm_manager = LLMManager()
+    llm_manager.register_provider("fake", provider)
+    llm_manager.switch_provider("fake")
+
+    registry = ToolRegistry()
+    registry.register(SafeTestTool())
+    executor = ToolExecutor(registry)
+    parser = ResponseParser()
+    runner = AgentRunner(llm_manager, registry, executor, parser)
+
+    req = AgentRequest("r1", "Query", "terminal")
+    mem_ctx = "[RELEVANT LONG-TERM MEMORY]\n- The user's name is Anas."
+    res = runner.run(req, [{"role": "user", "content": "Query"}], memory_context=mem_ctx)
+
+    assert res.text == "Final response text"
+    assert len(provider.calls) == 2
+
+    # Verify first turn system context order:
+    # 1. Core/system instructions
+    # 2. Tool-use policy
+    # 3. Relevant long-term memory
+    first_messages = provider.calls[0][0]
+    system_messages = [msg for msg in first_messages if msg["role"] == "system"]
+    
+    assert len(system_messages) == 3
+    assert "You are Jarvis" in system_messages[0]["content"]
+    assert TOOL_USE_POLICY_MARKER in system_messages[1]["content"]
+    assert "RELEVANT LONG-TERM MEMORY" in system_messages[2]["content"]
+
+    # Verify second turn system context remains same (not duplicated)
+    second_messages = provider.calls[1][0]
+    system_messages = [msg for msg in second_messages if msg["role"] == "system"]
+    
+    assert len(system_messages) == 3
+    assert "You are Jarvis" in system_messages[0]["content"]
+    assert TOOL_USE_POLICY_MARKER in system_messages[1]["content"]
+    assert "RELEVANT LONG-TERM MEMORY" in system_messages[2]["content"]

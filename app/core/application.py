@@ -139,18 +139,41 @@ class Application:
         from app.agent.runner import AgentRunner
         from app.ai.parser import ResponseParser
 
-        # 1. Create and populate ToolRegistry
+        # 1. Initialize Memory components
+        from app.core.constants import DATABASE_PATH
+        from app.memory.repository import SQLiteMemoryRepository
+        from app.memory.manager import MemoryManager
+        from app.memory.retrieval import LexicalMemoryRetriever
+        from app.memory.context import MemoryContextBuilder
+        from app.core.exceptions import ApplicationStartupError
+
+        try:
+            repository = SQLiteMemoryRepository(database_path=DATABASE_PATH)
+            memory_manager = MemoryManager(repository=repository)
+            retriever = LexicalMemoryRetriever(repository=repository)
+            context_builder = MemoryContextBuilder()
+
+            # Register in container
+            self.container.register("memory_repository", repository)
+            self.container.register("memory_manager", memory_manager)
+            self.container.register("memory_retriever", retriever)
+            self.container.register("memory_context_builder", context_builder)
+        except Exception as e:
+            self.logger.critical(f"Failed to initialize memory subsystem: {e}")
+            raise ApplicationStartupError(f"Memory subsystem initialization failed: {e}") from e
+
+        # 2. Create and populate ToolRegistry
         registry = ToolRegistry()
         registry.register(CurrentTimeTool())
         registry.register(SystemInfoTool())
 
-        # 2. Create ToolExecutor
+        # 3. Create ToolExecutor
         executor = ToolExecutor(registry)
 
-        # 3. Create parser
+        # 4. Create parser
         parser = ResponseParser()
 
-        # 4. Create AgentRunner
+        # 5. Create AgentRunner
         llm_manager = self.container.get("llm_manager")
         agent_runner = AgentRunner(
             llm_manager=llm_manager,
@@ -159,19 +182,21 @@ class Application:
             parser=parser
         )
 
-        # 5. Register in container
+        # 6. Register in container
         self.container.register("tool_registry", registry)
         self.container.register("tool_executor", executor)
         self.container.register("agent_runner", agent_runner)
 
-        # 6. Initialize Controller with AgentRunner
+        # 7. Initialize Controller with AgentRunner and Memory components
         conversation = Conversation()
         context_manager = ContextManager()
         controller = AgentController(
             conversation=conversation,
             context_manager=context_manager,
             llm_manager=llm_manager,
-            agent_runner=agent_runner
+            agent_runner=agent_runner,
+            retriever=retriever,
+            context_builder=context_builder
         )
         self.container.register("controller", controller)
 

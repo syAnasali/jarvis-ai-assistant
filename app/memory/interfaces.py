@@ -1,8 +1,6 @@
-"""Interfaces and abstract base classes for the memory subsystem."""
-
 from abc import ABC, abstractmethod
 from typing import List
-from app.memory.models import Memory
+from app.memory.models import Memory, MemoryRetrievalResult
 
 
 class MemoryRepository(ABC):
@@ -84,5 +82,25 @@ class MemoryRepository(ABC):
 
         Raises:
             MemoryPersistenceError: If count retrieval fails.
+        """
+        pass
+
+
+class MemoryRetriever(ABC):
+    """Abstract retriever interface defining memory search/matching operations."""
+
+    @abstractmethod
+    def retrieve(self, query: str, limit: int = 5) -> MemoryRetrievalResult:
+        """Searches long-term memories for records relevant to the query.
+
+        Args:
+            query: The search query string.
+            limit: The maximum number of matches to return.
+
+        Returns:
+            MemoryRetrievalResult: Bounded matches and retrieval diagnostics.
+
+        Raises:
+            MemorySystemError: If the retrieval process fails.
         """
         pass

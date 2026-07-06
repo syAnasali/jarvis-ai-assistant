@@ -55,12 +55,13 @@ class AgentRunner:
         self._parser = parser
         self._prompt_manager = prompt_manager or PromptManager()
 
-    def run(self, request: AgentRequest, formatted_history: List[Dict[str, Any]]) -> AgentRunResult:
+    def run(self, request: AgentRequest, formatted_history: List[Dict[str, Any]], memory_context: str = "") -> AgentRunResult:
         """Runs the bounded action loop synchronously until a final response is generated.
 
         Args:
             request: The active AgentRequest.
             formatted_history: Already formatted conversation messages.
+            memory_context: Prebuilt memory context string.
 
         Returns:
             AgentRunResult: The final text response and aggregate execution metrics.
@@ -74,13 +75,16 @@ class AgentRunner:
         all_requested_tools = []
         iteration_metrics_list: List[AgentIterationMetrics] = []
 
-        # Setup working messages and inject tool-use policy once
-        working_messages = []
-        policy_prompt = self._prompt_manager.tool_use_policy()
-        working_messages.append({"role": "system", "content": policy_prompt})
-        working_messages.extend(formatted_history)
-
         schemas = self._registry.get_schemas()
+
+        # Setup working messages following the preferred system-context order
+        working_messages = []
+        working_messages.append({"role": "system", "content": self._prompt_manager.system_prompt()})
+        if schemas:
+            working_messages.append({"role": "system", "content": self._prompt_manager.tool_use_policy()})
+        if memory_context:
+            working_messages.append({"role": "system", "content": memory_context})
+        working_messages.extend(formatted_history)
 
         for iteration in range(1, MAX_AGENT_ITERATIONS + 1):
             iter_start_time = time.perf_counter()
@@ -181,12 +185,13 @@ class AgentRunner:
         logger.error("Agent iteration limit reached.")
         raise LLMError(f"Agent reached the maximum iteration limit of {MAX_AGENT_ITERATIONS} turns.")
 
-    def run_stream(self, request: AgentRequest, formatted_history: List[Dict[str, Any]]) -> Iterator[str]:
+    def run_stream(self, request: AgentRequest, formatted_history: List[Dict[str, Any]], memory_context: str = "") -> Iterator[str]:
         """Runs the bounded action loop, executing intermediate tool turns, and streaming the final text.
 
         Args:
             request: The active AgentRequest.
             formatted_history: Already formatted conversation messages.
+            memory_context: Prebuilt memory context string.
 
         Returns:
             Iterator[str]: Iterator yielding final text response fragments.
@@ -200,13 +205,16 @@ class AgentRunner:
         all_requested_tools = []
         iteration_metrics_list: List[AgentIterationMetrics] = []
 
-        # Setup working messages and inject tool-use policy once
-        working_messages = []
-        policy_prompt = self._prompt_manager.tool_use_policy()
-        working_messages.append({"role": "system", "content": policy_prompt})
-        working_messages.extend(formatted_history)
-
         schemas = self._registry.get_schemas()
+
+        # Setup working messages following the preferred system-context order
+        working_messages = []
+        working_messages.append({"role": "system", "content": self._prompt_manager.system_prompt()})
+        if schemas:
+            working_messages.append({"role": "system", "content": self._prompt_manager.tool_use_policy()})
+        if memory_context:
+            working_messages.append({"role": "system", "content": memory_context})
+        working_messages.extend(formatted_history)
 
         for iteration in range(1, MAX_AGENT_ITERATIONS + 1):
             iter_start_time = time.perf_counter()

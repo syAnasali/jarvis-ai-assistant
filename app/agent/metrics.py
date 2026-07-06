@@ -41,3 +41,5 @@ class AgentExecutionMetrics:
     tool_calls: int
     iteration_metrics: List[AgentIterationMetrics] = field(default_factory=list)
     requested_tools: tuple[str, ...] = ()
+    memory_matches: tuple[str, ...] = ()
+    memory_retrieval_duration_ms: float = 0.0

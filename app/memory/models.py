@@ -82,3 +82,37 @@ class Memory:
         # Validate metadata
         if not isinstance(self.metadata, dict):
             raise MemoryValidationError("Memory metadata must be a dictionary.")
+
+
+@dataclass(frozen=True)
+class MemoryMatch:
+    """Represents a matched memory with calculated relevance scores.
+
+    Attributes:
+        memory: The matched Memory domain object.
+        relevance_score: Combined final scoring from 0.0 to 1.0.
+        lexical_score: Pure text overlap scoring from 0.0 to 1.0.
+        importance_score: Bounded importance score from 0.0 to 1.0.
+    """
+
+    memory: Memory
+    relevance_score: float
+    lexical_score: float
+    importance_score: float
+
+
+@dataclass(frozen=True)
+class MemoryRetrievalResult:
+    """Result payload returned by memory retrieval operations.
+
+    Attributes:
+        query: The normalized user request string.
+        matches: Immutable tuple of matched memories.
+        total_candidates: Count of Candidate memories evaluated.
+        selected_count: Count of matched memories returned.
+    """
+
+    query: str
+    matches: tuple[MemoryMatch, ...]
+    total_candidates: int
+    selected_count: int
