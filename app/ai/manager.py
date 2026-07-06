@@ -1,19 +1,26 @@
 """Manager for registering and coordinating active LLM providers."""
 
 from collections.abc import Iterator
+import threading
 from typing import Dict, Any, List
 from app.ai.interfaces import BaseLLMProvider
 from app.ai.models import GenerationProfile, GenerationResult
+from app.ai.scheduler import PriorityInferenceScheduler, InferencePriority
 from app.core.exceptions import LLMError
 
 
 class LLMManager:
     """Coordinates registration and switching of active AI LLM providers."""
 
-    def __init__(self) -> None:
-        """Initializes the LLMManager with empty provider registry."""
+    def __init__(self, scheduler: PriorityInferenceScheduler | None = None) -> None:
+        """Initializes the LLMManager with empty provider registry.
+
+        Args:
+            scheduler: Optional PriorityInferenceScheduler.
+        """
         self._providers: Dict[str, BaseLLMProvider] = {}
         self._active_provider_name: str | None = None
+        self._scheduler = scheduler
 
     def register_provider(self, name: str, provider: BaseLLMProvider) -> None:
         """Registers an AI provider in the manager.
@@ -118,7 +125,8 @@ class LLMManager:
         messages: List[Dict[str, Any]],
         options: Dict[str, Any] | None = None,
         tools: List[Dict[str, Any]] | None = None,
-        profile: GenerationProfile = GenerationProfile.BALANCED
+        profile: GenerationProfile = GenerationProfile.BALANCED,
+        priority: InferencePriority = InferencePriority.FOREGROUND
     ) -> GenerationResult:
         """Delegates generation to the active provider.
 
@@ -127,6 +135,7 @@ class LLMManager:
             options: Optional runtime options.
             tools: Optional provider-neutral tool schemas list.
             profile: Optional semantic generation profile.
+            priority: Inference scheduling priority.
 
         Returns:
             GenerationResult: Wrapped response and normalized metrics.
@@ -137,6 +146,12 @@ class LLMManager:
         active = self.active_provider
         if not active:
             raise LLMError("No active LLM provider has been loaded.")
+        
+        if self._scheduler and threading.current_thread() != self._scheduler.worker_thread:
+            return self._scheduler.execute(
+                lambda: active.generate(messages, options, tools, profile),
+                priority=priority
+            )
         return active.generate(messages, options, tools, profile)
 
     def generate_stream(

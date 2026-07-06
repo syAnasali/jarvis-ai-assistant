@@ -118,10 +118,16 @@ class Application:
 
     def _initialize_llm(self) -> None:
         """Sets up the LLMManager and registers the default OllamaProvider."""
+        from app.ai.scheduler import PriorityInferenceScheduler
         from app.ai.manager import LLMManager
         from app.ai.providers.ollama import OllamaProvider
         
-        llm_manager = LLMManager()
+        # Initialize and start PriorityInferenceScheduler
+        scheduler = PriorityInferenceScheduler()
+        scheduler.start()
+        self.container.register("inference_scheduler", scheduler)
+        
+        llm_manager = LLMManager(scheduler=scheduler)
         ollama_provider = OllamaProvider(host=settings.ollama_host, model=settings.ollama_model)
         llm_manager.register_provider("ollama", ollama_provider)
         llm_manager.load_provider("ollama")
@@ -303,6 +309,14 @@ class Application:
                 coordinator.shutdown()
         except Exception as e:
             self.logger.error(f"Error shutting down memory coordinator: {e}")
+
+        # 1b. Shutdown inference scheduler (waits for queued jobs to complete)
+        try:
+            if self.container.has("inference_scheduler"):
+                scheduler = self.container.get("inference_scheduler")
+                scheduler.shutdown()
+        except Exception as e:
+            self.logger.error(f"Error shutting down inference scheduler: {e}")
 
         # 2. Shutdown active LLM provider afterward
         try:

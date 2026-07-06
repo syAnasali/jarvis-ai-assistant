@@ -5,6 +5,7 @@ from typing import List, Dict, Any
 from app.agent.planner import ExecutionPlan
 from app.ai.manager import LLMManager
 from app.ai.models import GenerationProfile
+from app.ai.scheduler import InferencePriority
 
 
 class Executor:
@@ -38,7 +39,11 @@ class Executor:
             raise NotImplementedError("Tool and Memory execution paths are not yet supported.")
 
         if plan.use_llm:
-            return self._llm_manager.generate(formatted_messages, profile=GenerationProfile.BALANCED)
+            return self._llm_manager.generate(
+                formatted_messages,
+                profile=GenerationProfile.BALANCED,
+                priority=InferencePriority.FOREGROUND
+            )
 
         raise NotImplementedError("Plan does not contain a supported execution path.")
 

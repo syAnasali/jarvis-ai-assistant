@@ -14,6 +14,7 @@ from app.ai.parser import ResponseParser
 from app.agent.models import AgentRequest, AgentResponse, ToolCall
 from app.agent.metrics import AgentIterationMetrics, AgentExecutionMetrics
 from app.ai.models import GenerationMetrics, GenerationResult, GenerationProfile
+from app.ai.scheduler import InferencePriority
 from app.ai.prompts import PromptManager
 from app.core.logger import JarvisLogger
 
@@ -94,8 +95,12 @@ class AgentRunner:
             # Decide profile: TOOL_SELECTION for first turn (no tools called yet), FAST for follow-ups
             current_profile = GenerationProfile.TOOL_SELECTION if tool_calls_count == 0 else GenerationProfile.FAST
 
-            # Call generate and get GenerationResult
-            gen_result = self._llm_manager.generate(working_messages, tools=schemas, profile=current_profile)
+            gen_result = self._llm_manager.generate(
+                working_messages,
+                tools=schemas,
+                profile=current_profile,
+                priority=InferencePriority.FOREGROUND
+            )
             model_calls += 1
             metrics = gen_result.metrics
 

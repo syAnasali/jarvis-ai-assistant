@@ -6,6 +6,7 @@ from app.ai.manager import LLMManager
 from app.ai.models import GenerationProfile
 from app.ai.prompts import PromptManager
 from app.ai.parser import ResponseParser
+from app.ai.scheduler import InferencePriority
 from app.memory.interfaces import MemoryExtractor
 from app.memory.models import MemoryExtractionResult, MemorySource
 from app.memory.parser import MemoryExtractionParser
@@ -51,7 +52,8 @@ class LLMMemoryExtractor(MemoryExtractor):
             # Execute generation using the MEMORY_EXTRACTION profile
             gen_result = self._llm_manager.generate(
                 messages=messages,
-                profile=GenerationProfile.MEMORY_EXTRACTION
+                profile=GenerationProfile.MEMORY_EXTRACTION,
+                priority=InferencePriority.MEMORY_EXTRACTION
             )
 
             # Parse completion response text

@@ -5,6 +5,7 @@ from typing import List
 
 from app.ai.manager import LLMManager
 from app.ai.models import GenerationProfile
+from app.ai.scheduler import InferencePriority
 from app.memory.interfaces import MemoryResolver
 from app.memory.models import Memory, MemoryCandidate
 from app.memory.resolution import MemoryResolutionDecision, MemoryResolutionParser, MemoryResolutionAction
@@ -66,7 +67,8 @@ class LLMMemoryResolver(MemoryResolver):
             self._logger.debug(f"Submitting memory resolution request for candidate: '{candidate.content}'")
             result = self._llm_manager.generate(
                 messages=messages,
-                profile=GenerationProfile.MEMORY_RESOLUTION
+                profile=GenerationProfile.MEMORY_RESOLUTION,
+                priority=InferencePriority.MEMORY_RESOLUTION
             )
             response_text = result.raw_response
             if isinstance(response_text, dict):
