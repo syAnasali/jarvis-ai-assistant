@@ -53,3 +53,23 @@ class MemoryExtractionError(MemorySystemError):
 
 class MemoryCandidateValidationError(MemoryValidationError):
     """Raised when validation of a MemoryCandidate fails."""
+
+
+class ConversationError(JarvisError):
+    """Base exception class for all conversation subsystem errors."""
+
+
+class ConversationValidationError(ConversationError):
+    """Raised when conversation domain validation fails (e.g. naive datetimes)."""
+
+
+class ConversationNotFoundError(ConversationError):
+    """Raised when a requested conversation session or message is not found."""
+
+
+class ConversationPersistenceError(ConversationError):
+    """Raised when a conversation database or persistence operation fails."""
+
+
+class SessionStateError(ConversationError):
+    """Raised when an illegal session state transition or operation occurs."""

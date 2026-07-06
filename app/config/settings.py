@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     log_level: LogLevel = DEFAULT_LOG_LEVEL
     voice_name: str = "en-US-Neural"
     hotkey: str = "ctrl+alt+j"
+    conversation_context_max_messages: int = 24
+    conversation_context_max_characters: int = 24000
 
 
 # Singleton instance

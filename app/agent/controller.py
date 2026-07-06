@@ -16,6 +16,8 @@ from app.utils.id_generator import generate_message_id, generate_response_id
 from app.agent.planner import Planner, ExecutionPlan
 from app.agent.executor import Executor
 from app.agent.runner import AgentRunner
+from app.conversation.manager import ConversationManager
+from app.conversation.policy import ContextWindowPolicy
 from app.memory.interfaces import MemoryRetriever
 from app.memory.context import MemoryContextBuilder
 from app.memory.coordinator import MemoryWriteCoordinator
@@ -34,7 +36,9 @@ class AgentController:
         agent_runner: AgentRunner | None = None,
         retriever: MemoryRetriever | None = None,
         context_builder: MemoryContextBuilder | None = None,
-        coordinator: MemoryWriteCoordinator | None = None
+        coordinator: MemoryWriteCoordinator | None = None,
+        conversation_manager: ConversationManager | None = None,
+        context_policy: ContextWindowPolicy | None = None
     ) -> None:
         """Initializes the AgentController.
 
@@ -46,6 +50,8 @@ class AgentController:
             retriever: Optional MemoryRetriever implementation.
             context_builder: Optional MemoryContextBuilder implementation.
             coordinator: Optional MemoryWriteCoordinator implementation.
+            conversation_manager: Optional ConversationManager implementation.
+            context_policy: Optional ContextWindowPolicy implementation.
         """
         self.conversation = conversation
         self.context_manager = context_manager
@@ -58,6 +64,9 @@ class AgentController:
         self._retriever = retriever
         self._context_builder = context_builder
         self._coordinator = coordinator
+        self.conversation_manager = conversation_manager
+        self.context_policy = context_policy
+        self.active_session_id: str | None = None
 
     def process_request(self, request: AgentRequest) -> AgentResponse:
         """Processes an incoming user request using the active context.
@@ -134,6 +143,8 @@ class AgentController:
                 timestamp=datetime.now(timezone.utc),
                 metadata=agent_response.metadata,
             )
+            if self.conversation_manager and self.active_session_id:
+                self.conversation_manager.add_message(self.active_session_id, assistant_message)
             self.conversation.add_message(assistant_message)
             logger.info("Assistant response stored.")
 
@@ -263,6 +274,8 @@ class AgentController:
                 timestamp=datetime.now(timezone.utc),
                 metadata={},
             )
+            if self.conversation_manager and self.active_session_id:
+                self.conversation_manager.add_message(self.active_session_id, assistant_message)
             self.conversation.add_message(assistant_message)
             logger.info("Assistant response stored.")
 
@@ -316,6 +329,8 @@ class AgentController:
             timestamp=datetime.now(timezone.utc),
             metadata=request.metadata,
         )
+        if self.conversation_manager and self.active_session_id:
+            self.conversation_manager.add_message(self.active_session_id, user_message)
         self.conversation.add_message(user_message)
         logger.info("Conversation updated with user message.")
 
@@ -327,7 +342,10 @@ class AgentController:
 
         # Use MessageFormatter to get payload ready
         logger.info("Formatting started.")
-        formatted_messages = self._formatter.format_history(self.conversation.get_history())
+        history = self.conversation.get_history()
+        if self.context_policy:
+            history = self.context_policy.select_history(history)
+        formatted_messages = self._formatter.format_history(history)
         logger.info("Conversation formatted.")
 
         return plan, formatted_messages

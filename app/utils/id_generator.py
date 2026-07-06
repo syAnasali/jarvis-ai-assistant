@@ -37,3 +37,12 @@ def generate_memory_id() -> str:
         str: Generated memory identifier.
     """
     return f"mem_{uuid.uuid4().hex[:8]}"
+
+
+def generate_session_id() -> str:
+    """Generates a unique conversation session identifier.
+
+    Returns:
+        str: Generated session identifier.
+    """
+    return f"session_{uuid.uuid4().hex[:8]}"

@@ -72,6 +72,9 @@ class Application:
             self._initialize_llm()
             self._initialize_agent()
             render_startup_banner()
+            active_session = self.container.get("conversation_active_session")
+            print(f"Session: {active_session.session_id}")
+            print()
             self._run_chat_loop()
         except Exception as e:
             self.state = ApplicationState.ERROR
@@ -203,6 +206,25 @@ class Application:
             self.logger.critical(f"Failed to initialize memory subsystem: {e}")
             raise ApplicationStartupError(f"Memory subsystem initialization failed: {e}") from e
 
+        # 1.5. Initialize Conversation Persistence components
+        from app.conversation.repository import SQLiteConversationRepository
+        from app.conversation.manager import ConversationManager
+        from app.conversation.policy import ContextWindowPolicy
+
+        try:
+            conv_repository = SQLiteConversationRepository(database_path=DATABASE_PATH)
+            conversation_manager = ConversationManager(repository=conv_repository)
+            context_policy = ContextWindowPolicy()
+            active_session = conversation_manager.create_session()
+
+            self.container.register("conversation_repository", conv_repository)
+            self.container.register("conversation_manager", conversation_manager)
+            self.container.register("conversation_context_policy", context_policy)
+            self.container.register("conversation_active_session", active_session)
+        except Exception as e:
+            self.logger.critical(f"Failed to initialize conversation subsystem: {e}")
+            raise ApplicationStartupError(f"Conversation subsystem initialization failed: {e}") from e
+
         # 2. Create and populate ToolRegistry
         registry = ToolRegistry()
         registry.register(CurrentTimeTool())
@@ -237,8 +259,11 @@ class Application:
             agent_runner=agent_runner,
             retriever=retriever,
             context_builder=context_builder,
-            coordinator=coordinator
+            coordinator=coordinator,
+            conversation_manager=conversation_manager,
+            context_policy=context_policy
         )
+        controller.active_session_id = active_session.session_id
         self.container.register("controller", controller)
 
     def _run_chat_loop(self) -> None:

@@ -51,6 +51,20 @@ class Conversation:
         """
         return list(self._messages)
 
+    def load_history(self, messages: List[Message]) -> None:
+        """Hydrates the in-memory conversation with a history of messages.
+
+        Args:
+            messages: List of Message objects to load.
+        """
+        # Validate that all elements are Message instances
+        for msg in messages:
+            if not isinstance(msg, Message):
+                raise TypeError("History items must be instances of Message.")
+
+        self._messages = list(messages)
+        self._enforce_limit()
+
     def _enforce_limit(self) -> None:
         """Trims message history if it exceeds the maximum size constraint."""
         if self._max_history is not None and len(self._messages) > self._max_history:

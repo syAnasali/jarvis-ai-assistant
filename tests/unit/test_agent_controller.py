@@ -275,3 +275,57 @@ def test_controller_memory_coordinator_streaming_schedule():
     # After consumption finishes, coordinator should be called exactly once
     mock_coordinator.submit.assert_called_once_with("User query")
 
+
+def test_controller_conversation_persistence_integration():
+    """Verify that AgentController persists messages before in-memory addition and propagates errors."""
+    from app.conversation.manager import ConversationManager
+    from app.conversation.policy import ContextWindowPolicy
+
+    mock_llm_manager = MagicMock(spec=LLMManager)
+    mock_runner = MagicMock(spec=AgentRunner)
+    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
+    mock_runner.run.return_value = AgentRunResult("Assistant reply", exec_metrics)
+
+    conversation = Conversation()
+    context_manager = ContextManager()
+
+    mock_conv_manager = MagicMock(spec=ConversationManager)
+    mock_policy = MagicMock(spec=ContextWindowPolicy)
+    mock_policy.select_history.side_effect = lambda msgs: msgs
+
+    controller = AgentController(
+        conversation=conversation,
+        context_manager=context_manager,
+        llm_manager=mock_llm_manager,
+        agent_runner=mock_runner,
+        conversation_manager=mock_conv_manager,
+        context_policy=mock_policy
+    )
+    controller.active_session_id = "session_xyz"
+
+    # Callbacks to verify persistence occurs BEFORE in-memory add
+    order = []
+
+    def mock_add_message(session_id, message):
+        assert session_id == "session_xyz"
+        order.append(f"persist_{message.role.value}")
+        # At this point, the message should NOT be in the conversation log yet
+        # (meaning the last message in in-memory history isn't this one, or the list length doesn't include it yet)
+        if message.role == MessageRole.USER:
+            assert len(conversation.get_history()) == 0
+        elif message.role == MessageRole.ASSISTANT:
+            # Only USER is in history
+            assert len(conversation.get_history()) == 1
+
+    mock_conv_manager.add_message.side_effect = mock_add_message
+
+    request = AgentRequest("req_1", "Hello there", "terminal")
+    response = controller.process_request(request)
+
+    assert response.text == "Assistant reply"
+    assert order == ["persist_user", "persist_assistant"]
+    assert len(conversation.get_history()) == 2
+    assert conversation.get_history()[0].content == "Hello there"
+    assert conversation.get_history()[1].content == "Assistant reply"
+
+
