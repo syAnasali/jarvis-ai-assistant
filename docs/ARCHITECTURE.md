@@ -102,7 +102,23 @@ The diagram below maps the runtime components and wiring in the current codebase
 
 ---
 
-## 7. Dependency Direction
+## 7. Memory Subsystem
+
+The memory subsystem provides a persistent storage foundation for long-term user facts, projects, preferences, and assistant context. It is designed to be completely provider-neutral, isolating SQLite database mechanics behind clear domain interfaces.
+
+- **`Memory`**: Located in `app/memory/models.py`. An immutable domain model representing a single durable item of memory. It contains attributes like `memory_id`, `content`, `memory_type` (e.g. `FACT`, `PREFERENCE`, `PROJECT`, `CONTEXT`), `created_at`, `updated_at`, `importance` (score between 0.0 and 1.0), `source` (e.g. `USER`, `SYSTEM`, `MANUAL`), and extensible JSON metadata.
+- **`MemoryRepository`**: Located in `app/memory/interfaces.py`. Abstract base repository contract defining persistence operations (`add`, `get`, `list_all`, `update`, `delete`, `count`).
+- **`SQLiteMemoryRepository`**: Located in `app/memory/repository.py`. SQLite-backed database engine implementation mapping memory models to sql tables. It encapsulates table initialization (`memories`), parameterized inserts/updates/deletes, schema-level validations, and JSON metadata parsing.
+- **`MemoryManager`**: Located in `app/memory/manager.py`. Domain coordinator executing validations and managing memories. It generates unique memory IDs using centralized ID utilities and timestamps using timezone-aware UTC datetime. `MemoryManager` has no direct knowledge of SQLite database schemas, and receives repositories via constructor injection.
+
+### Current Lifecycle & Integration Boundary
+- Memory operations run in isolation from the agent execution flow in this sprint.
+- Integration will eventually register `MemoryManager` inside the `ServiceContainer` during `Application` startup (likely in `_initialize_agent`).
+- *Important constraints*: Automatic memory extraction, memory retrieval/ranking, memory prompt injection, and semantic/vector search are not implemented yet.
+
+---
+
+## 8. Dependency Direction
 
 Jarvis enforces a strict Directed Acyclic Graph (DAG) for all imports and dependencies:
 
@@ -118,7 +134,7 @@ Jarvis enforces a strict Directed Acyclic Graph (DAG) for all imports and depend
 
 ---
 
-## 8. Application Lifecycle
+## 9. Application Lifecycle
 
 The runtime processes transitions through states governed by `ApplicationState`:
 
@@ -147,7 +163,7 @@ The runtime processes transitions through states governed by `ApplicationState`:
 
 ---
 
-## 9. Extension Points
+## 10. Extension Points
 
 The architecture defines dedicated boundaries for implementing future capabilities:
 - **Additional LLM Providers**: Inheriting from `BaseLLMProvider` inside `app/ai/providers/` allows registering new runtimes (e.g. OpenAI, llama.cpp) inside the `LLMManager` registry.
@@ -159,7 +175,7 @@ The architecture defines dedicated boundaries for implementing future capabiliti
 
 ---
 
-## 10. Current Architectural Limitations
+## 11. Current Architectural Limitations
 
 - **Terminal Presentation**: Input and output are locked to terminal standard standard stream descriptors (`stdin`, `stdout`).
 - **Single Model Backend**: Currently only implements `OllamaProvider` as a concrete LLM provider.

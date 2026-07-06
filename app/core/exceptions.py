@@ -14,7 +14,25 @@ class LLMError(JarvisError):
 
 
 class MemoryError(JarvisError):
-    """Raised when there is an issue with memory storage or retrieval."""
+    """Raised when there is an issue with memory storage or retrieval.
+    Preserved for backward compatibility, behaves as MemorySystemError base.
+    """
+
+
+class MemorySystemError(MemoryError):
+    """Base exception class for all memory subsystem errors."""
+
+
+class MemoryValidationError(MemorySystemError):
+    """Raised when memory validation fails."""
+
+
+class MemoryNotFoundError(MemorySystemError):
+    """Raised when a requested memory cannot be found."""
+
+
+class MemoryPersistenceError(MemorySystemError):
+    """Raised when a memory database or storage operation fails."""
 
 
 class VoiceError(JarvisError):

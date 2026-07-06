@@ -28,3 +28,12 @@ def generate_response_id() -> str:
         str: Generated response identifier.
     """
     return f"resp_{uuid.uuid4().hex[:8]}"
+
+
+def generate_memory_id() -> str:
+    """Generates a unique memory identifier.
+
+    Returns:
+        str: Generated memory identifier.
+    """
+    return f"mem_{uuid.uuid4().hex[:8]}"

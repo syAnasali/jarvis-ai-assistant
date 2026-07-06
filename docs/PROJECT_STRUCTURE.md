@@ -42,8 +42,12 @@ jarvis-ai-assistant/
 │   │   ├── exceptions.py             # Custom Jarvis system exception hierarchy
 │   │   ├── lifecycle.py              # Application lifecycle states enum
 │   │   └── logger.py                 # Loguru log setup handlers
-│   ├── memory/                       # Database and memory schemas (reserved)
-│   │   └── __init__.py               # Reserved for future implementation
+│   ├── memory/                       # Persistent memory domain and SQLite store
+│   │   ├── __init__.py               # Package initialization and exports
+│   │   ├── interfaces.py             # MemoryRepository abstract base class
+│   │   ├── manager.py                # MemoryManager orchestrator class
+│   │   ├── models.py                 # Memory, MemoryType, MemorySource models
+│   │   └── repository.py             # SQLiteMemoryRepository implementation
 │   ├── prompts/                      # External prompt files (reserved)
 │   │   └── __init__.py               # Reserved for future implementation
 │   ├── services/                     # Third-party integrations (reserved)
@@ -117,14 +121,20 @@ Manages application lifecycles, bootstraps, setups, and common configurations.
 - **`lifecycle.py`**: Defines the `ApplicationState` enum.
 - **`logger.py`**: Sets up rotating and console loggers via Loguru.
 
+### `app/memory/`
+Manages durable facts, projects, preferences, and assistant context persistence.
+- **`models.py`**: Declares Memory, MemoryType, and MemorySource domain models.
+- **`interfaces.py`**: Defines abstract MemoryRepository base class contract.
+- **`repository.py`**: Coordinates raw SQLite table CRUD executions.
+- **`manager.py`**: Handles validation rules, timezone-aware UTC datetime timestamps, and delegates operations to injected repositories.
+
 ### `app/utils/`
 Provides shared utilities.
-- **`id_generator.py`**: Centralizes unique ID generation for messages, requests, and responses.
+- **`id_generator.py`**: Centralizes unique ID generation for messages, requests, responses, and memories.
 - **`banner.py`**: Houses console startup and shutdown banners.
 
 ### Reserved Packages (Reserved for Future Implementation)
 The following directories are empty placeholder packages (except for `__init__.py`) reserved for future phases of the project roadmap:
-- **`app/memory/`**: SQLite memory database engines.
 - **`app/prompts/`**: Externalized prompt files.
 - **`app/services/`**: Third-party API integrations (e.g. email, calendars).
 - **`app/tools/`**: Local sandboxed system execution tools.
