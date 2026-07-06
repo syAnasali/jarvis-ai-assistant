@@ -97,6 +97,15 @@ class OllamaProvider(BaseLLMProvider):
                 merged_options["num_predict"] = 256
             if "format" not in merged_options:
                 merged_options["format"] = "json"
+        elif profile == GenerationProfile.MEMORY_RESOLUTION:
+            think_value = False
+            # Default options for structured memory resolution
+            if "temperature" not in merged_options:
+                merged_options["temperature"] = 0.0
+            if "num_predict" not in merged_options:
+                merged_options["num_predict"] = 256
+            if "format" not in merged_options:
+                merged_options["format"] = "json"
         else:
             think_value = None
 

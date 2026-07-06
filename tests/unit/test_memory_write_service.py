@@ -89,7 +89,7 @@ def test_write_service_candidate_persisted():
         memory_type=cand.memory_type,
         importance=cand.importance,
         source=MemorySource.USER,
-        metadata={"extraction_method": "llm", "source": "agent_request"}
+        metadata={"extraction_method": "llm", "source": "agent_request", "last_resolution_action": "CREATE"}
     )
 
 
@@ -244,3 +244,81 @@ def test_write_service_fabricated_evidence_rejected():
 
     assert res.persisted_count == 0
     assert res.rejected_count == 1
+
+
+def test_write_service_conflict_resolution_update_flow():
+    """Verify that a candidate resulting in UPDATE is successfully processed through conflict resolution flow."""
+    mock_extractor = MagicMock(spec=MemoryExtractor)
+    cand = create_test_candidate("The user prefers JavaScript.", memory_type=MemoryType.PREFERENCE, evidence="I prefer JavaScript")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand,), source_text="I prefer JavaScript", candidate_count=1)
+
+    existing = Memory("mem_1", "The user prefers Python.", MemoryType.PREFERENCE, datetime.now(timezone.utc), datetime.now(timezone.utc), 0.8, MemorySource.USER, {})
+
+    mock_manager = MagicMock(spec=MemoryManager)
+    mock_manager.list_memories.return_value = [existing]
+    mock_manager.get_memory.side_effect = lambda mid: existing if mid == "mem_1" else None
+
+    from app.memory.interfaces import MemoryResolver
+    from app.memory.resolution import MemoryResolutionDecision, MemoryResolutionAction
+    mock_resolver = MagicMock(spec=MemoryResolver)
+    mock_resolver.resolve.return_value = MemoryResolutionDecision(
+        action=MemoryResolutionAction.UPDATE,
+        candidate=cand,
+        target_memory_id="mem_1",
+        confidence=0.95,
+        reason_code="UPDATED_PREFERENCE"
+    )
+
+    # Injected resolver
+    service = MemoryWriteService(
+        extractor=mock_extractor,
+        memory_manager=mock_manager,
+        resolver=mock_resolver
+    )
+
+    res = service.write_memories("I prefer JavaScript")
+    assert res.extracted_count == 1
+    assert res.persisted_count == 1
+    assert res.updated_count == 1
+    mock_resolver.resolve.assert_called_once()
+    mock_manager.update_memory.assert_called_once_with(
+        memory_id="mem_1",
+        content="The user prefers JavaScript.",
+        memory_type=MemoryType.PREFERENCE,
+        importance=0.8,
+        metadata={"last_resolution_action": "UPDATE"}
+    )
+
+
+def test_write_service_resolver_failure_isolated():
+    """Verify that resolver failure increments resolution_failed_count but does not block other candidate execution."""
+    mock_extractor = MagicMock(spec=MemoryExtractor)
+    cand1 = create_test_candidate("The user prefers JS.", memory_type=MemoryType.PREFERENCE, evidence="I prefer JS")
+    cand2 = create_test_candidate("The user lives in Jaipur.", memory_type=MemoryType.FACT, evidence="I live in Jaipur")
+    mock_extractor.extract.return_value = MemoryExtractionResult(candidates=(cand1, cand2), source_text="I prefer JS. I live in Jaipur.", candidate_count=2)
+
+    existing = Memory("mem_1", "The user prefers Python.", MemoryType.PREFERENCE, datetime.now(timezone.utc), datetime.now(timezone.utc), 0.8, MemorySource.USER, {})
+
+    mock_manager = MagicMock(spec=MemoryManager)
+    mock_manager.list_memories.return_value = [existing]
+    mock_manager.get_memory.side_effect = lambda mid: existing if mid == "mem_1" else None
+
+    # Resolver raises exception (representing inference/parsing failure)
+    from app.memory.interfaces import MemoryResolver
+    mock_resolver = MagicMock(spec=MemoryResolver)
+    mock_resolver.resolve.side_effect = Exception("Model is overloaded")
+
+    service = MemoryWriteService(
+        extractor=mock_extractor,
+        memory_manager=mock_manager,
+        resolver=mock_resolver
+    )
+
+    res = service.write_memories("I prefer JS. I live in Jaipur.")
+    assert res.extracted_count == 2
+    # cand1 fails at conflict resolution (failed count incremented, skipped)
+    # cand2 has no related memories, bypasses resolver, CREATE succeeds
+    assert res.resolution_failed_count == 1
+    assert res.persisted_count == 1
+    assert res.created_count == 1
+

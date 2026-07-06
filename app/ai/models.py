@@ -13,6 +13,7 @@ class GenerationProfile(Enum):
     BALANCED = "balanced"
     REASONING = "reasoning"
     MEMORY_EXTRACTION = "memory_extraction"
+    MEMORY_RESOLUTION = "memory_resolution"
 
 
 @dataclass(frozen=True)

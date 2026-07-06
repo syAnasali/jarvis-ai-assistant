@@ -32,6 +32,14 @@ def normalize_content(text: str) -> str:
 
 
 from app.memory.validation import MemoryEvidenceValidator
+from app.memory.interfaces import MemoryResolver
+from app.memory.related import RelatedMemoryFinder
+from app.memory.resolution import (
+    MemoryResolutionAction,
+    MemoryResolutionDecision,
+    MemoryResolutionValidator,
+    MemoryResolutionExecutor,
+)
 
 
 class MemoryWriteService:
@@ -41,7 +49,11 @@ class MemoryWriteService:
         self,
         extractor: MemoryExtractor,
         memory_manager: MemoryManager,
-        confidence_threshold: float = 0.8
+        confidence_threshold: float = 0.8,
+        related_finder: RelatedMemoryFinder | None = None,
+        resolver: MemoryResolver | None = None,
+        validator: MemoryResolutionValidator | None = None,
+        executor: MemoryResolutionExecutor | None = None,
     ) -> None:
         """Initializes the MemoryWriteService.
 
@@ -49,12 +61,22 @@ class MemoryWriteService:
             extractor: Injected MemoryExtractor implementation.
             memory_manager: Injected MemoryManager domain orchestrator.
             confidence_threshold: Minimum confidence required to persist memories.
+            related_finder: Prefilter to locate potentially related database memories.
+            resolver: LLM conflict resolver interface.
+            validator: Validator for resolution decisions.
+            executor: Executor to apply resolution actions.
         """
         self._extractor = extractor
         self._memory_manager = memory_manager
         self._confidence_threshold = confidence_threshold
         self._secret_guard = SecretGuard()
         self._evidence_validator = MemoryEvidenceValidator()
+
+        self._related_finder = related_finder or RelatedMemoryFinder()
+        self._validator = validator or MemoryResolutionValidator()
+        self._executor = executor or MemoryResolutionExecutor(memory_manager)
+
+        self._resolver = resolver
 
     def write_memories(self, text: str) -> MemoryWriteResult:
         """Extracts memories from user text, runs checks, and persists approved candidates.
@@ -76,6 +98,12 @@ class MemoryWriteService:
         duplicate_count = 0
         rejected_count = 0
         persisted_ids = []
+        created_count = 0
+        updated_count = 0
+        replaced_count = 0
+        kept_both_count = 0
+        ignored_count = 0
+        resolution_failed_count = 0
 
         if not text or not text.strip():
             return MemoryWriteResult(0, 0, 0, 0, (), 0.0)
@@ -144,26 +172,71 @@ class MemoryWriteService:
                 duplicate_count += 1
                 continue
 
-            # 5. Persist memory through MemoryManager
+            # 5. Conflict Resolution Stage
             try:
-                meta = {
-                    "extraction_method": "llm",
-                    "source": "agent_request"
-                }
-                persisted = self._memory_manager.create_memory(
-                    content=candidate.content,
-                    memory_type=candidate.memory_type,
-                    importance=candidate.importance,
-                    source=MemorySource.USER,
-                    metadata=meta
-                )
-                persisted_ids.append(persisted.memory_id)
-                persisted_count += 1
-
-                # Update existing memory cache for multi-candidate sibling duplicate checks
-                existing_memories.append(persisted)
+                related = self._related_finder.find_related(candidate, existing_memories)
+                
+                if not related:
+                    decision = MemoryResolutionDecision(
+                        action=MemoryResolutionAction.CREATE,
+                        candidate=candidate,
+                        target_memory_id=None,
+                        confidence=1.0,
+                        reason_code="NO_RELATED_MEMORY"
+                    )
+                else:
+                    if self._resolver:
+                        decision = self._resolver.resolve(candidate, related)
+                    else:
+                        decision = MemoryResolutionDecision(
+                            action=MemoryResolutionAction.CREATE,
+                            candidate=candidate,
+                            target_memory_id=None,
+                            confidence=1.0,
+                            reason_code="NO_RELATED_MEMORY"
+                        )
+                    
+                    decision = self._validator.validate(decision, related)
             except Exception as e:
+                resolution_failed_count += 1
+                from app.core.logger import JarvisLogger
+                JarvisLogger.get_logger("write_service").error(f"Failed resolving candidate memory: {e}")
+                continue
+
+            # Execute action (Persistence errors propagate here)
+            try:
+                res_id = self._executor.execute(decision)
+            except Exception as e:
+                if isinstance(e, MemoryPersistenceError):
+                    raise e
                 raise MemoryPersistenceError(f"Failed to persist candidate memory: {e}") from e
+            
+            # Update metrics
+            if decision.action == MemoryResolutionAction.CREATE:
+                created_count += 1
+                persisted_count += 1
+            elif decision.action == MemoryResolutionAction.KEEP_BOTH:
+                kept_both_count += 1
+                persisted_count += 1
+            elif decision.action == MemoryResolutionAction.UPDATE:
+                updated_count += 1
+                persisted_count += 1
+            elif decision.action == MemoryResolutionAction.REPLACE:
+                replaced_count += 1
+                persisted_count += 1
+            elif decision.action == MemoryResolutionAction.IGNORE:
+                ignored_count += 1
+                if decision.reason_code == "UNSUPPORTED_RESOLUTION":
+                    resolution_failed_count += 1
+            
+            if res_id:
+                persisted_ids.append(res_id)
+                # Refresh existing_memories cache
+                new_mem = self._memory_manager.get_memory(res_id)
+                if new_mem:
+                    if decision.action in (MemoryResolutionAction.UPDATE, MemoryResolutionAction.REPLACE):
+                        existing_memories = [m for m in existing_memories if m.memory_id != decision.target_memory_id]
+                    existing_memories.append(new_mem)
 
         duration_ms = (time.perf_counter() - start_time) * 1000
         return MemoryWriteResult(
@@ -172,5 +245,11 @@ class MemoryWriteService:
             duplicate_count=duplicate_count,
             rejected_count=rejected_count,
             persisted_memory_ids=tuple(persisted_ids),
-            duration_ms=duration_ms
+            duration_ms=duration_ms,
+            created_count=created_count,
+            updated_count=updated_count,
+            replaced_count=replaced_count,
+            kept_both_count=kept_both_count,
+            ignored_count=ignored_count,
+            resolution_failed_count=resolution_failed_count
         )

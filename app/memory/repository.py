@@ -217,3 +217,43 @@ class SQLiteMemoryRepository(MemoryRepository):
                 return row[0] if row else 0
         except sqlite3.Error as e:
             raise MemoryPersistenceError(f"Database execution error on count: {e}") from e
+
+    def replace(self, old_memory_id: str, new_memory: Memory) -> None:
+        """Atomically replaces an old memory with a new one using a transaction."""
+        try:
+            with self._connection() as conn:
+                with conn:
+                    # 1. Check if old_memory_id exists
+                    row = conn.execute(
+                        "SELECT 1 FROM memories WHERE memory_id = ?", (old_memory_id,)
+                    ).fetchone()
+                    if not row:
+                        raise MemoryNotFoundError(f"Memory with ID {old_memory_id} not found.")
+
+                    # 2. Delete old memory
+                    conn.execute("DELETE FROM memories WHERE memory_id = ?", (old_memory_id,))
+
+                    # 3. Insert new memory
+                    conn.execute(
+                        """
+                        INSERT INTO memories (
+                            memory_id, content, memory_type, created_at, updated_at, importance, source, metadata
+                        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                        """,
+                        (
+                            new_memory.memory_id,
+                            new_memory.content,
+                            new_memory.memory_type.value,
+                            new_memory.created_at.isoformat(),
+                            new_memory.updated_at.isoformat(),
+                            new_memory.importance,
+                            new_memory.source.value,
+                            json.dumps(new_memory.metadata),
+                        ),
+                    )
+        except MemoryNotFoundError as e:
+            raise e
+        except sqlite3.IntegrityError as e:
+            raise MemoryValidationError(f"Database constraint violation on replace: {e}") from e
+        except sqlite3.Error as e:
+            raise MemoryPersistenceError(f"Database execution error on replace: {e}") from e

@@ -166,3 +166,8 @@ class MemoryManager:
             int: The total count of memories.
         """
         return self._repository.count()
+
+    def replace_memory(self, old_memory_id: str, new_memory: Memory) -> Memory:
+        """Atomically replaces an old memory with a new memory in persistence."""
+        self._repository.replace(old_memory_id, new_memory)
+        return new_memory

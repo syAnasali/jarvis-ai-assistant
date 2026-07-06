@@ -211,3 +211,9 @@ class MemoryWriteResult:
     rejected_count: int
     persisted_memory_ids: tuple[str, ...]
     duration_ms: float = 0.0
+    created_count: int = 0
+    updated_count: int = 0
+    replaced_count: int = 0
+    kept_both_count: int = 0
+    ignored_count: int = 0
+    resolution_failed_count: int = 0

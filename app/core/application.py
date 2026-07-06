@@ -160,7 +160,24 @@ class Application:
             llm_manager = self.container.get("llm_manager")
             extraction_parser = MemoryExtractionParser()
             extractor = LLMMemoryExtractor(llm_manager=llm_manager)
-            write_service = MemoryWriteService(extractor=extractor, memory_manager=memory_manager)
+
+            from app.memory.related import RelatedMemoryFinder
+            from app.memory.resolver import LLMMemoryResolver
+            from app.memory.resolution import MemoryResolutionValidator, MemoryResolutionExecutor
+
+            related_finder = RelatedMemoryFinder()
+            resolver = LLMMemoryResolver(llm_manager=llm_manager)
+            validator = MemoryResolutionValidator()
+            executor = MemoryResolutionExecutor(memory_manager=memory_manager)
+
+            write_service = MemoryWriteService(
+                extractor=extractor,
+                memory_manager=memory_manager,
+                related_finder=related_finder,
+                resolver=resolver,
+                validator=validator,
+                executor=executor
+            )
             coordinator = MemoryWriteCoordinator(write_service=write_service)
 
             # Register in container
@@ -170,6 +187,10 @@ class Application:
             self.container.register("memory_context_builder", context_builder)
             self.container.register("memory_extraction_parser", extraction_parser)
             self.container.register("memory_extractor", extractor)
+            self.container.register("memory_related_finder", related_finder)
+            self.container.register("memory_resolver", resolver)
+            self.container.register("memory_resolution_validator", validator)
+            self.container.register("memory_resolution_executor", executor)
             self.container.register("memory_write_service", write_service)
             self.container.register("memory_coordinator", coordinator)
         except Exception as e:

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-from app.memory.models import Memory, MemoryRetrievalResult, MemoryExtractionResult
+from app.memory.models import Memory, MemoryRetrievalResult, MemoryExtractionResult, MemoryCandidate
 
 
 class MemoryRepository(ABC):
@@ -85,6 +85,20 @@ class MemoryRepository(ABC):
         """
         pass
 
+    def replace(self, old_memory_id: str, new_memory: Memory) -> None:
+        """Atomically replaces an old memory with a new one.
+
+        Args:
+            old_memory_id: ID of the memory to replace/delete.
+            new_memory: The new Memory object to persist.
+
+        Raises:
+            MemoryNotFoundError: If the old memory is not found.
+            MemoryPersistenceError: If the database transaction fails.
+            MemoryValidationError: If domain constraints of new_memory are violated.
+        """
+        raise NotImplementedError("replace method not implemented in this repository.")
+
 
 class MemoryRetriever(ABC):
     """Abstract retriever interface defining memory search/matching operations."""
@@ -121,5 +135,26 @@ class MemoryExtractor(ABC):
 
         Raises:
             MemoryExtractionError: If the extraction model fails.
+        """
+        pass
+
+
+class MemoryResolver(ABC):
+    """Abstract interface defining memory conflict resolution operations."""
+
+    @abstractmethod
+    def resolve(
+        self,
+        candidate: MemoryCandidate,
+        related_memories: List[Memory],
+    ) -> "MemoryResolutionDecision":
+        """Determines conflict resolution action between candidate and related memories.
+
+        Args:
+            candidate: The new MemoryCandidate being processed.
+            related_memories: Existing memories related to the candidate.
+
+        Returns:
+            MemoryResolutionDecision: Resolution action and metadata.
         """
         pass
