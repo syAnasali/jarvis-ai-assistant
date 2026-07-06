@@ -146,3 +146,86 @@ def test_controller_retrieval_failure_propagates():
     
     with pytest.raises(RuntimeError, match="Database locked"):
         controller.process_request(request)
+
+
+def test_controller_memory_write_success():
+    """Verify write_service is called after assistant response is stored and metrics are updated."""
+    mock_llm_manager = MagicMock(spec=LLMManager)
+    mock_retriever = MagicMock(spec=MemoryRetriever)
+    mock_retriever.retrieve.return_value = MemoryRetrievalResult("Q", (), 0, 0)
+    mock_context_builder = MagicMock(spec=MemoryContextBuilder)
+    mock_context_builder.build.return_value = ""
+
+    mock_runner = MagicMock(spec=AgentRunner)
+    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
+    mock_runner.run.return_value = AgentRunResult("Final response", exec_metrics)
+
+    from app.memory.write_service import MemoryWriteService
+    from app.memory.models import MemoryWriteResult
+    mock_write_service = MagicMock(spec=MemoryWriteService)
+    mock_write = MemoryWriteResult(extracted_count=2, persisted_count=1, duplicate_count=0, rejected_count=1, persisted_memory_ids=("m_1",))
+    mock_write_service.write_memories.return_value = mock_write
+
+    conversation = Conversation()
+    context_manager = ContextManager()
+
+    controller = AgentController(
+        conversation=conversation,
+        context_manager=context_manager,
+        llm_manager=mock_llm_manager,
+        agent_runner=mock_runner,
+        retriever=mock_retriever,
+        context_builder=mock_context_builder,
+        write_service=mock_write_service
+    )
+
+    request = AgentRequest("req_1", "User query", "terminal")
+    response = controller.process_request(request)
+
+    # 1. Verify write service called with request text
+    mock_write_service.write_memories.assert_called_once_with("User query")
+
+    # 2. Verify metrics updated
+    metrics = response.metadata.get("execution_metrics")
+    assert metrics is not None
+    assert metrics.memories_extracted == 2
+    assert metrics.memories_persisted == 1
+
+
+def test_controller_memory_write_failure_isolated():
+    """Verify memory write failures are isolated and do not crash the user response flow."""
+    mock_llm_manager = MagicMock(spec=LLMManager)
+    mock_retriever = MagicMock(spec=MemoryRetriever)
+    mock_retriever.retrieve.return_value = MemoryRetrievalResult("Q", (), 0, 0)
+    mock_context_builder = MagicMock(spec=MemoryContextBuilder)
+    mock_context_builder.build.return_value = ""
+
+    mock_runner = MagicMock(spec=AgentRunner)
+    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
+    mock_runner.run.return_value = AgentRunResult("Final response", exec_metrics)
+
+    from app.memory.write_service import MemoryWriteService
+    from app.core.exceptions import MemorySystemError
+    mock_write_service = MagicMock(spec=MemoryWriteService)
+    mock_write_service.write_memories.side_effect = MemorySystemError("Extraction failed")
+
+    conversation = Conversation()
+    context_manager = ContextManager()
+
+    controller = AgentController(
+        conversation=conversation,
+        context_manager=context_manager,
+        llm_manager=mock_llm_manager,
+        agent_runner=mock_runner,
+        retriever=mock_retriever,
+        context_builder=mock_context_builder,
+        write_service=mock_write_service
+    )
+
+    request = AgentRequest("req_1", "User query", "terminal")
+    # Should complete successfully and NOT raise MemorySystemError
+    response = controller.process_request(request)
+
+    assert response.text == "Final response"
+    mock_write_service.write_memories.assert_called_once_with("User query")
+

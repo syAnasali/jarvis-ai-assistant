@@ -27,10 +27,10 @@ This document outlines the multi-phase roadmap for developing the Jarvis AI Assi
 - **Deliverables**: Tool decorator/base class, arguments validator, and execution sandbox runner.
 - **Expected Outcome**: The agent loop can parse model intents, validate parameters, and execute local functions safely.
 
-## Phase 6: Memory Engine [In Progress]
-- **Goal**: Set up local database storage for persistence.
-- **Deliverables**: SQLite schema setup, MemoryRepository, SQLiteMemoryRepository, MemoryManager, and domain models complete.
-- **Expected Outcome**: Domain and persistence foundation for long-term memory is complete and fully tested in isolation. State and chat history persist across application restarts.
+## Phase 6: Memory Engine [Complete]
+- **Goal**: Set up local database storage, retrieval, context injection, and write pipeline for persistence.
+- **Deliverables**: SQLite schema setup, MemoryRepository, SQLiteMemoryRepository, MemoryManager, LexicalMemoryRetriever, MemoryContextBuilder, LLMMemoryExtractor, MemoryExtractionParser, MemoryWriteService, and SecretGuard complete.
+- **Expected Outcome**: Durable long-term memory system is integrated into the agent loop. Facts and preferences are automatically extracted from user input, validation and security filters are applied, exact/near-duplicates are resolved, and contextually relevant memories are retrieved and injected into the model's system prompt dynamically. State and memories persist across restarts.
 
 ## Phase 7: Voice System
 - **Goal**: Implement text-to-speech (TTS) and speech-to-text (STT) capabilities.

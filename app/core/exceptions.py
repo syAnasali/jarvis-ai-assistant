@@ -45,3 +45,11 @@ class ToolExecutionError(JarvisError):
 
 class ApplicationStartupError(JarvisError):
     """Raised when the application fails to start up correctly."""
+
+
+class MemoryExtractionError(MemorySystemError):
+    """Raised when memory extraction from text fails."""
+
+
+class MemoryCandidateValidationError(MemoryValidationError):
+    """Raised when validation of a MemoryCandidate fails."""

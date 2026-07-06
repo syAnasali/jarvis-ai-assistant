@@ -110,11 +110,17 @@ The memory subsystem provides a persistent storage foundation for long-term user
 - **`MemoryRepository`**: Located in `app/memory/interfaces.py`. Abstract base repository contract defining persistence operations (`add`, `get`, `list_all`, `update`, `delete`, `count`).
 - **`SQLiteMemoryRepository`**: Located in `app/memory/repository.py`. SQLite-backed database engine implementation mapping memory models to sql tables. It encapsulates table initialization (`memories`), parameterized inserts/updates/deletes, schema-level validations, and JSON metadata parsing.
 - **`MemoryManager`**: Located in `app/memory/manager.py`. Domain coordinator executing validations and managing memories. It generates unique memory IDs using centralized ID utilities and timestamps using timezone-aware UTC datetime. `MemoryManager` has no direct knowledge of SQLite database schemas, and receives repositories via constructor injection.
+- **`LexicalMemoryRetriever`**: Located in `app/memory/retrieval.py`. Performs lexical matching against stored memories using token-based overlap and importance score ranking.
+- **`MemoryContextBuilder`**: Located in `app/memory/context.py`. Formats matched memories into a structured markdown block (`[RELEVANT LONG-TERM MEMORY]`) to inject into the system prompt.
+- **`LLMMemoryExtractor`**: Located in `app/memory/extraction.py`. Uses the LLM under a dedicated low-temperature deterministic profile (`MEMORY_EXTRACTION`) to parse user request text for durable user facts or preferences.
+- **`MemoryExtractionParser`**: Located in `app/memory/parser.py`. Robustly parses LLM response text into structured `MemoryCandidate` lists, isolating malformed JSON items.
+- **`MemoryWriteService`**: Located in `app/memory/write_service.py`. Coordinates candidates validation, confidence filtering, Secret Guard checks, exact/near-duplicate detection, and database persistence.
+- **`SecretGuard`**: Located in `app/memory/guard.py`. Deterministically matches common credentials patterns (bearer tokens, passwords, private keys, API keys) to prevent persisting them.
 
-### Current Lifecycle & Integration Boundary
-- Memory operations run in isolation from the agent execution flow in this sprint.
-- Integration will eventually register `MemoryManager` inside the `ServiceContainer` during `Application` startup (likely in `_initialize_agent`).
-- *Important constraints*: Automatic memory extraction, memory retrieval/ranking, memory prompt injection, and semantic/vector search are not implemented yet.
+### Integration & Execution Boundary
+- Memory retrieval occurs prior to execution planning. The retrieved context is dynamically injected at the system prompt level once per turn.
+- Memory write operations execute *after* the assistant response has successfully generated and been saved to the conversation log.
+- Extraction failures or validation rejections are fully isolated: they log errors but do not crash the chat flow or cause the overall user request to fail.
 
 ---
 
@@ -180,6 +186,5 @@ The architecture defines dedicated boundaries for implementing future capabiliti
 - **Terminal Presentation**: Input and output are locked to terminal standard standard stream descriptors (`stdin`, `stdout`).
 - **Single Model Backend**: Currently only implements `OllamaProvider` as a concrete LLM provider.
 - **Static Planning Logic**: The `Planner` does not classify intents dynamically; it hardcodes the plan route to `CHAT` (using the LLM).
-- **No Persistent Storage**: Conversation logs are volatile and vanish immediately when the CLI process exits.
-- **No Tool Capabilities**: System calls, directory reads, and web searches cannot be performed by the agent loop.
-- **Synchronous inference**: Generation requests block execution until the model completes its response, with no token streaming.
+- **Volatile Conversation Logs**: Conversation message logs are volatile and vanish immediately when the CLI process exits, though user facts and preferences are persistently stored in long-term memory.
+- **Limited Tool Capabilities**: System calls, directory reads, and web searches cannot be performed outside the system info and current time tools.

@@ -1,6 +1,6 @@
 from abc import ABC, abstractmethod
 from typing import List
-from app.memory.models import Memory, MemoryRetrievalResult
+from app.memory.models import Memory, MemoryRetrievalResult, MemoryExtractionResult
 
 
 class MemoryRepository(ABC):
@@ -102,5 +102,24 @@ class MemoryRetriever(ABC):
 
         Raises:
             MemorySystemError: If the retrieval process fails.
+        """
+        pass
+
+
+class MemoryExtractor(ABC):
+    """Abstract memory extractor interface defining semantic parsing of user inputs."""
+
+    @abstractmethod
+    def extract(self, text: str) -> MemoryExtractionResult:
+        """Extracts candidate memory records from raw text.
+
+        Args:
+            text: The raw user message text.
+
+        Returns:
+            MemoryExtractionResult: Extracted candidates and source details.
+
+        Raises:
+            MemoryExtractionError: If the extraction model fails.
         """
         pass

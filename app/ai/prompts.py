@@ -56,3 +56,40 @@ class PromptManager:
             "- After a successful tool result, ground the answer in that result.\n"
             "- Do not contradict successful tool output."
         )
+
+    def memory_extraction_prompt(self) -> str:
+        """Returns the system instructions for extracting durable memories from user input.
+
+        Returns:
+            str: System instruction prompt template.
+        """
+        return (
+            "You are a precise information extraction system. Analyze the provided USER MESSAGE "
+            "and extract any genuinely durable user facts, preferences, projects, or context that should "
+            "be remembered for future conversations.\n\n"
+            "ELIGIBILITY CRITERIA:\n"
+            "- Facts: Stable personal details explicitly stated (e.g. name, location, occupation).\n"
+            "- Preferences: Explicit user choices or style habits (e.g. 'I prefer Python', 'Answer concisely').\n"
+            "- Projects: Long-lived ongoing goals or tasks (e.g. 'I am building a local assistant').\n"
+            "- Context: Durable context that will matter in future sessions.\n\n"
+            "DO NOT EXTRACT:\n"
+            "- Conversational noise, greetings, or thanks (e.g. 'Hello', 'Thanks').\n"
+            "- Generic questions, coding requests, or search queries (e.g. 'Explain photosynthesis', 'Write a function').\n"
+            "- Transient request-specific comments (e.g. 'I am typing right now').\n"
+            "- Secrets, passwords, API keys, private keys, bearer tokens, or government/financial IDs.\n\n"
+            "OUTPUT FORMAT:\n"
+            "You must return ONLY a raw JSON object with a single 'memories' key containing a list of extracted memories. "
+            "Do not wrap in markdown block formatting (no ```json). Do not add explanations or conversational filler. "
+            "If no durable information is found, return {\"memories\": []}.\n\n"
+            "JSON SCHEMA:\n"
+            "{\n"
+            "  \"memories\": [\n"
+            "    {\n"
+            "      \"content\": \"The user's name is Anas.\", (Represent the user in third person: 'The user prefers...', 'The user is...')\n"
+            "      \"memory_type\": \"FACT\" | \"PREFERENCE\" | \"PROJECT\" | \"CONTEXT\",\n"
+            "      \"importance\": 0.0 to 1.0 (proposed priority rating),\n"
+            "      \"confidence\": 0.0 to 1.0 (how sure you are of this fact)\n"
+            "    }\n"
+            "  ]\n"
+            "}"
+        )

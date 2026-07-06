@@ -4,7 +4,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from enum import Enum
 from typing import Dict, Any
-from app.core.exceptions import MemoryValidationError
+from copy import deepcopy
+from app.core.exceptions import MemoryValidationError, MemoryCandidateValidationError
 
 
 class MemoryType(Enum):
@@ -116,3 +117,91 @@ class MemoryRetrievalResult:
     matches: tuple[MemoryMatch, ...]
     total_candidates: int
     selected_count: int
+
+
+@dataclass(frozen=True)
+class MemoryCandidate:
+    """Domain model representing a structured candidate for long-term memory.
+
+    Attributes:
+        content: Concise statement of fact, preference, project, or context.
+        memory_type: The semantic category of memory.
+        importance: Score from 0.0 to 1.0 indicating priority/rank.
+        confidence: Score from 0.0 to 1.0 indicating extraction confidence.
+        source: The origin source of the memory.
+        metadata: Extensible key-value dict storing additional attributes.
+    """
+
+    content: str
+    memory_type: MemoryType
+    importance: float
+    confidence: float
+    source: MemorySource
+    metadata: Dict[str, Any] = field(default_factory=dict)
+
+    def __post_init__(self) -> None:
+        if not isinstance(self.content, str):
+            raise MemoryCandidateValidationError("Memory content must be a string.")
+        if not self.content or not self.content.strip():
+            raise MemoryCandidateValidationError("Memory content must not be empty or whitespace-only.")
+
+        try:
+            imp = float(self.importance)
+        except (ValueError, TypeError) as e:
+            raise MemoryCandidateValidationError(f"Memory importance must be a numeric score, got {self.importance}") from e
+        if imp < 0.0 or imp > 1.0:
+            raise MemoryCandidateValidationError(f"Memory importance must be between 0.0 and 1.0, got {self.importance}")
+
+        try:
+            conf = float(self.confidence)
+        except (ValueError, TypeError) as e:
+            raise MemoryCandidateValidationError(f"Memory confidence must be a numeric score, got {self.confidence}") from e
+        if conf < 0.0 or conf > 1.0:
+            raise MemoryCandidateValidationError(f"Memory confidence must be between 0.0 and 1.0, got {self.confidence}")
+
+        if not isinstance(self.memory_type, MemoryType):
+            raise MemoryCandidateValidationError(f"Invalid memory type: {self.memory_type}")
+
+        if not isinstance(self.source, MemorySource):
+            raise MemoryCandidateValidationError(f"Invalid memory source: {self.source}")
+
+        if not isinstance(self.metadata, dict):
+            raise MemoryCandidateValidationError("Memory metadata must be a dictionary.")
+
+        object.__setattr__(self, "metadata", deepcopy(self.metadata))
+
+
+@dataclass(frozen=True)
+class MemoryExtractionResult:
+    """Immutable result model returned by memory extraction operations.
+
+    Attributes:
+        candidates: Immutable tuple of extracted MemoryCandidate objects.
+        source_text: The original user request text string.
+        candidate_count: Number of candidate memories extracted.
+    """
+
+    candidates: tuple[MemoryCandidate, ...]
+    source_text: str
+    candidate_count: int
+
+
+@dataclass(frozen=True)
+class MemoryWriteResult:
+    """Immutable result model returned by memory write operations.
+
+    Attributes:
+        extracted_count: Total candidates extracted.
+        persisted_count: Total memories successfully persisted.
+        duplicate_count: Total duplicates detected and rejected.
+        rejected_count: Total memories rejected (e.g. low confidence or secrets).
+        persisted_memory_ids: Immutable tuple of IDs of newly persisted memories.
+        duration_ms: Total duration of the extraction and write process in milliseconds.
+    """
+
+    extracted_count: int
+    persisted_count: int
+    duplicate_count: int
+    rejected_count: int
+    persisted_memory_ids: tuple[str, ...]
+    duration_ms: float = 0.0

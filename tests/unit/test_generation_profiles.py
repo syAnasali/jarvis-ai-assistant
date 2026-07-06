@@ -60,6 +60,7 @@ def test_generation_profile_values():
     assert GenerationProfile.TOOL_SELECTION.value == "tool_selection"
     assert GenerationProfile.BALANCED.value == "balanced"
     assert GenerationProfile.REASONING.value == "reasoning"
+    assert GenerationProfile.MEMORY_EXTRACTION.value == "memory_extraction"
 
 
 def test_profile_propagation_llm_manager():
@@ -84,6 +85,10 @@ def test_profile_propagation_llm_manager():
     # Explicit REASONING profile check
     manager.generate([{"role": "user", "content": "Hi"}], profile=GenerationProfile.REASONING)
     assert provider.received_profiles[-1] == GenerationProfile.REASONING
+
+    # Explicit MEMORY_EXTRACTION profile check
+    manager.generate([{"role": "user", "content": "Hi"}], profile=GenerationProfile.MEMORY_EXTRACTION)
+    assert provider.received_profiles[-1] == GenerationProfile.MEMORY_EXTRACTION
 
 
 def test_options_not_mutated_and_deterministic_merging():

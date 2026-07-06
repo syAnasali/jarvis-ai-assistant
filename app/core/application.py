@@ -145,6 +145,9 @@ class Application:
         from app.memory.manager import MemoryManager
         from app.memory.retrieval import LexicalMemoryRetriever
         from app.memory.context import MemoryContextBuilder
+        from app.memory.parser import MemoryExtractionParser
+        from app.memory.extraction import LLMMemoryExtractor
+        from app.memory.write_service import MemoryWriteService
         from app.core.exceptions import ApplicationStartupError
 
         try:
@@ -153,11 +156,19 @@ class Application:
             retriever = LexicalMemoryRetriever(repository=repository)
             context_builder = MemoryContextBuilder()
 
+            llm_manager = self.container.get("llm_manager")
+            extraction_parser = MemoryExtractionParser()
+            extractor = LLMMemoryExtractor(llm_manager=llm_manager)
+            write_service = MemoryWriteService(extractor=extractor, memory_manager=memory_manager)
+
             # Register in container
             self.container.register("memory_repository", repository)
             self.container.register("memory_manager", memory_manager)
             self.container.register("memory_retriever", retriever)
             self.container.register("memory_context_builder", context_builder)
+            self.container.register("memory_extraction_parser", extraction_parser)
+            self.container.register("memory_extractor", extractor)
+            self.container.register("memory_write_service", write_service)
         except Exception as e:
             self.logger.critical(f"Failed to initialize memory subsystem: {e}")
             raise ApplicationStartupError(f"Memory subsystem initialization failed: {e}") from e
@@ -174,7 +185,6 @@ class Application:
         parser = ResponseParser()
 
         # 5. Create AgentRunner
-        llm_manager = self.container.get("llm_manager")
         agent_runner = AgentRunner(
             llm_manager=llm_manager,
             registry=registry,
@@ -196,7 +206,8 @@ class Application:
             llm_manager=llm_manager,
             agent_runner=agent_runner,
             retriever=retriever,
-            context_builder=context_builder
+            context_builder=context_builder,
+            write_service=write_service
         )
         self.container.register("controller", controller)
 

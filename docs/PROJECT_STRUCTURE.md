@@ -44,10 +44,16 @@ jarvis-ai-assistant/
 │   │   └── logger.py                 # Loguru log setup handlers
 │   ├── memory/                       # Persistent memory domain and SQLite store
 │   │   ├── __init__.py               # Package initialization and exports
-│   │   ├── interfaces.py             # MemoryRepository abstract base class
+│   │   ├── context.py                # MemoryContextBuilder for prompt formatting
+│   │   ├── extraction.py             # LLMMemoryExtractor
+│   │   ├── guard.py                  # SecretGuard for credential filtering
+│   │   ├── interfaces.py             # MemoryRepository, MemoryRetriever, MemoryExtractor
 │   │   ├── manager.py                # MemoryManager orchestrator class
-│   │   ├── models.py                 # Memory, MemoryType, MemorySource models
-│   │   └── repository.py             # SQLiteMemoryRepository implementation
+│   │   ├── models.py                 # Memory, MemoryType, MemorySource, MemoryCandidate, etc.
+│   │   ├── parser.py                 # MemoryExtractionParser
+│   │   ├── repository.py             # SQLiteMemoryRepository implementation
+│   │   ├── retrieval.py              # LexicalMemoryRetriever
+│   │   └── write_service.py          # MemoryWriteService
 │   ├── prompts/                      # External prompt files (reserved)
 │   │   └── __init__.py               # Reserved for future implementation
 │   ├── services/                     # Third-party integrations (reserved)
@@ -123,10 +129,16 @@ Manages application lifecycles, bootstraps, setups, and common configurations.
 
 ### `app/memory/`
 Manages durable facts, projects, preferences, and assistant context persistence.
-- **`models.py`**: Declares Memory, MemoryType, and MemorySource domain models.
-- **`interfaces.py`**: Defines abstract MemoryRepository base class contract.
+- **`models.py`**: Declares Memory, MemoryType, MemorySource, MemoryCandidate, etc.
+- **`interfaces.py`**: Defines abstract base class contracts for repositories, retrievers, and extractors.
 - **`repository.py`**: Coordinates raw SQLite table CRUD executions.
 - **`manager.py`**: Handles validation rules, timezone-aware UTC datetime timestamps, and delegates operations to injected repositories.
+- **`retrieval.py`**: Token-based deterministic lexical retriever.
+- **`context.py`**: Compiles matches into system prompt context with constraint enforcement.
+- **`extraction.py`**: LLM memory candidate extractor using a dedicated profile.
+- **`parser.py`**: Parser to extract memory list JSON.
+- **`write_service.py`**: Coordinates extraction, confidence filter, secret guard, duplicate checks, and writes.
+- **`guard.py`**: Narrow deterministic pattern matching secret guard.
 
 ### `app/utils/`
 Provides shared utilities.
@@ -145,5 +157,11 @@ The following directories are empty placeholder packages (except for `__init__.p
 
 ## Scripts & Tests
 
-- **`scripts/test_ollama_provider.py`**: An isolated script to verify Ollama server connections and model chat completions independently from the core agent orchestrator.
-- **`tests/`**: Test suite directory. Currently empty, pending future testing phases.
+- **`scripts/`**: Administration and diagnostic scripts.
+  - **`test_ollama_provider.py`**: Isolated Ollama client verification script.
+  - **`test_memory_retrieval.py`**: Lexical memory retriever diagnostics.
+  - **`test_agent_memory.py`**: E2E memory retrieval test.
+  - **`test_memory_extraction.py`**: Memory extraction diagnostics.
+  - **`test_memory_write.py`**: Memory write service diagnostics.
+  - **`test_memory_restart.py`**: Cross-restart memory persistence diagnostics.
+- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, and memory write service.

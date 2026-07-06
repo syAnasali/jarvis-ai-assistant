@@ -43,3 +43,6 @@ class AgentExecutionMetrics:
     requested_tools: tuple[str, ...] = ()
     memory_matches: tuple[str, ...] = ()
     memory_retrieval_duration_ms: float = 0.0
+    memory_extraction_duration_ms: float = 0.0
+    memories_extracted: int = 0
+    memories_persisted: int = 0

@@ -86,6 +86,15 @@ class OllamaProvider(BaseLLMProvider):
             think_value = False
         elif profile == GenerationProfile.REASONING:
             think_value = True
+        elif profile == GenerationProfile.MEMORY_EXTRACTION:
+            think_value = False
+            # Default options for structured memory extraction
+            if "temperature" not in merged_options:
+                merged_options["temperature"] = 0.0
+            if "num_predict" not in merged_options:
+                merged_options["num_predict"] = 256
+            if "format" not in merged_options:
+                merged_options["format"] = "json"
         else:
             think_value = None
 
@@ -122,7 +131,10 @@ class OllamaProvider(BaseLLMProvider):
         kwargs: Dict[str, Any] = {}
         think_value, merged_options = self._adapt_generation_profile(profile, options)
         if merged_options:
-            kwargs["options"] = merged_options
+            if "format" in merged_options:
+                kwargs["format"] = merged_options.pop("format")
+            if merged_options:
+                kwargs["options"] = merged_options
         if think_value is not None:
             kwargs["think"] = think_value
 
@@ -230,7 +242,10 @@ class OllamaProvider(BaseLLMProvider):
         kwargs: Dict[str, Any] = {}
         think_value, merged_options = self._adapt_generation_profile(profile, options)
         if merged_options:
-            kwargs["options"] = merged_options
+            if "format" in merged_options:
+                kwargs["format"] = merged_options.pop("format")
+            if merged_options:
+                kwargs["options"] = merged_options
         if think_value is not None:
             kwargs["think"] = think_value
 

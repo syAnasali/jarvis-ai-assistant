@@ -18,6 +18,7 @@ from app.agent.executor import Executor
 from app.agent.runner import AgentRunner
 from app.memory.interfaces import MemoryRetriever
 from app.memory.context import MemoryContextBuilder
+from app.memory.write_service import MemoryWriteService
 
 logger = JarvisLogger.get_logger("agent_controller")
 
@@ -32,7 +33,8 @@ class AgentController:
         llm_manager: LLMManager,
         agent_runner: AgentRunner | None = None,
         retriever: MemoryRetriever | None = None,
-        context_builder: MemoryContextBuilder | None = None
+        context_builder: MemoryContextBuilder | None = None,
+        write_service: MemoryWriteService | None = None
     ) -> None:
         """Initializes the AgentController.
 
@@ -43,6 +45,7 @@ class AgentController:
             agent_runner: The AgentRunner to orchestrate tool calling loops.
             retriever: Optional MemoryRetriever implementation.
             context_builder: Optional MemoryContextBuilder implementation.
+            write_service: Optional MemoryWriteService implementation.
         """
         self.conversation = conversation
         self.context_manager = context_manager
@@ -54,6 +57,7 @@ class AgentController:
         self._runner = agent_runner
         self._retriever = retriever
         self._context_builder = context_builder
+        self._write_service = write_service
 
     def process_request(self, request: AgentRequest) -> AgentResponse:
         """Processes an incoming user request using the active context.
@@ -132,6 +136,38 @@ class AgentController:
             )
             self.conversation.add_message(assistant_message)
             logger.info("Assistant response stored.")
+
+            # Memory writing coordinates after successful response storage
+            if self._write_service is not None:
+                try:
+                    write_start = time.perf_counter()
+                    write_res = self._write_service.write_memories(request.text)
+                    write_dur = (time.perf_counter() - write_start) * 1000
+                    logger.info(
+                        f"Memory extraction completed: "
+                        f"extracted={write_res.extracted_count}, "
+                        f"persisted={write_res.persisted_count}, "
+                        f"duplicates={write_res.duplicate_count}, "
+                        f"rejected={write_res.rejected_count}, "
+                        f"duration_ms={write_dur:.2f}"
+                    )
+                    logger.debug(f"Persisted memory IDs: {write_res.persisted_memory_ids}")
+                    
+                    if exec_metrics is not None:
+                        from dataclasses import replace
+                        exec_metrics = replace(
+                            exec_metrics,
+                            memory_extraction_duration_ms=write_dur,
+                            memories_extracted=write_res.extracted_count,
+                            memories_persisted=write_res.persisted_count
+                        )
+                        agent_response.metadata["execution_metrics"] = exec_metrics
+                except Exception as e:
+                    from app.core.exceptions import MemorySystemError, MemoryValidationError
+                    if isinstance(e, (MemorySystemError, MemoryValidationError)):
+                        logger.error(f"Memory extraction/write failed (isolated): {e}")
+                    else:
+                        logger.error(f"Unexpected programming error during memory extraction: {e}")
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             
@@ -250,6 +286,37 @@ class AgentController:
             )
             self.conversation.add_message(assistant_message)
             logger.info("Assistant response stored.")
+
+            # Memory writing coordinates after successful response storage
+            if self._write_service is not None:
+                try:
+                    write_start = time.perf_counter()
+                    write_res = self._write_service.write_memories(request.text)
+                    write_dur = (time.perf_counter() - write_start) * 1000
+                    logger.info(
+                        f"Memory extraction completed: "
+                        f"extracted={write_res.extracted_count}, "
+                        f"persisted={write_res.persisted_count}, "
+                        f"duplicates={write_res.duplicate_count}, "
+                        f"rejected={write_res.rejected_count}, "
+                        f"duration_ms={write_dur:.2f}"
+                    )
+                    logger.debug(f"Persisted memory IDs: {write_res.persisted_memory_ids}")
+                    
+                    if exec_metrics is not None:
+                        from dataclasses import replace
+                        exec_metrics = replace(
+                            exec_metrics,
+                            memory_extraction_duration_ms=write_dur,
+                            memories_extracted=write_res.extracted_count,
+                            memories_persisted=write_res.persisted_count
+                        )
+                except Exception as e:
+                    from app.core.exceptions import MemorySystemError, MemoryValidationError
+                    if isinstance(e, (MemorySystemError, MemoryValidationError)):
+                        logger.error(f"Memory extraction/write failed (isolated): {e}")
+                    else:
+                        logger.error(f"Unexpected programming error during memory extraction: {e}")
 
             duration_ms = (time.perf_counter() - start_time) * 1000
             
