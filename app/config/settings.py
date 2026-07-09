@@ -52,6 +52,12 @@ class Settings(BaseSettings):
     filesystem_write_max_chars: int = 100000
     filesystem_relative_path_max_length: int = 512
 
+    desktop_window_list_limit: int = 50
+    desktop_text_max_chars: int = 5000
+    desktop_text_preview_chars: int = 80
+    desktop_window_wait_timeout_seconds: int = 10
+    desktop_window_poll_interval_ms: int = 200
+
     @classmethod
     def validate_relationships(cls, values: dict) -> None:
         """Validates tool settings ranges and relationships."""
@@ -86,6 +92,21 @@ class Settings(BaseSettings):
             raise ValueError("filesystem_relative_path_max_length must be positive")
         if values.get("filesystem_relative_path_max_length", 512) > 4096:
             raise ValueError("filesystem_relative_path_max_length cannot exceed 4096")
+
+        if values.get("desktop_window_list_limit", 50) <= 0:
+            raise ValueError("desktop_window_list_limit must be positive")
+        if values.get("desktop_window_list_limit", 50) > 500:
+            raise ValueError("desktop_window_list_limit cannot exceed 500")
+        if values.get("desktop_text_max_chars", 5000) <= 0:
+            raise ValueError("desktop_text_max_chars must be positive")
+        if values.get("desktop_text_max_chars", 5000) > 100000:
+            raise ValueError("desktop_text_max_chars cannot exceed 100000")
+        if values.get("desktop_text_preview_chars", 80) <= 0:
+            raise ValueError("desktop_text_preview_chars must be positive")
+        if values.get("desktop_window_wait_timeout_seconds", 10) <= 0:
+            raise ValueError("desktop_window_wait_timeout_seconds must be positive")
+        if values.get("desktop_window_poll_interval_ms", 200) <= 0:
+            raise ValueError("desktop_window_poll_interval_ms must be positive")
 
     from pydantic import model_validator
     @model_validator(mode="after")

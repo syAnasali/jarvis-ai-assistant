@@ -76,6 +76,50 @@ def prompt_user_approval(
         sys.stdout.write("==========================================================\n")
         sys.stdout.flush()
 
+    elif tool_name in ("focus_window", "type_text", "press_key", "press_hotkey", "click_screen"):
+        sys.stdout.write("\n==========================================================\n")
+        sys.stdout.write("Jarvis wants to perform an action requiring confirmation.\n\n")
+        sys.stdout.write("Action:\n")
+
+        if tool_name == "focus_window":
+            win_title = metadata.get("window_title", "Unknown Window")
+            proc_name = metadata.get("process_name", "Unknown Process")
+            sys.stdout.write(f"  Focus window: {win_title}\n")
+            sys.stdout.write(f"  Process: {proc_name}\n")
+
+        elif tool_name == "type_text":
+            win_title = metadata.get("expected_foreground_window_title", "Unknown Window")
+            char_count = metadata.get("character_count", 0)
+            preview = metadata.get("preview", "")
+            sys.stdout.write(f"  Type text into: {win_title}\n")
+            sys.stdout.write(f"  Characters: {char_count}\n")
+            sys.stdout.write(f"  Preview: {preview}\n")
+
+        elif tool_name == "press_key":
+            win_title = metadata.get("expected_foreground_window_title", "Unknown Window")
+            key = arguments.get("key", "")
+            sys.stdout.write(f"  Press key: {key.capitalize()}\n")
+            sys.stdout.write(f"  Target window: {win_title}\n")
+
+        elif tool_name == "press_hotkey":
+            win_title = metadata.get("expected_foreground_window_title", "Unknown Window")
+            keys = arguments.get("keys", [])
+            shortcut_str = "+".join(str(k).capitalize() for k in keys)
+            sys.stdout.write(f"  Press shortcut: {shortcut_str}\n")
+            sys.stdout.write(f"  Target window: {win_title}\n")
+
+        elif tool_name == "click_screen":
+            win_title = metadata.get("expected_foreground_window_title", "Unknown Window")
+            x = arguments.get("x", 0)
+            y = arguments.get("y", 0)
+            button = arguments.get("button", "left")
+            sys.stdout.write(f"  Click {button.lower()} mouse button\n")
+            sys.stdout.write(f"  Position: ({x}, {y})\n")
+            sys.stdout.write(f"  Target window: {win_title}\n")
+
+        sys.stdout.write("==========================================================\n")
+        sys.stdout.flush()
+
     else:
         sys.stdout.write("\n==========================================================\n")
         sys.stdout.write("Jarvis wants to perform an action requiring confirmation.\n\n")

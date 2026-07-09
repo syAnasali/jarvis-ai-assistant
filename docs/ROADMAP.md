@@ -37,10 +37,10 @@ This document outlines the multi-phase roadmap for developing the Jarvis AI Assi
 - **Deliverables**: Voice activation listener, audio capture pipeline, and speech synthesizers.
 - **Expected Outcome**: The assistant can process raw voice commands and answer the user aloud.
 
-## Phase 8: Desktop Interface
-- **Goal**: Construct the desktop user interface.
-- **Deliverables**: Main UI window, settings dialog, and notification manager.
-- **Expected Outcome**: A functional UI allowing text chatting, system configuration, and status monitoring.
+## Phase 8: Controlled Desktop Interaction Runtime [Complete]
+- **Goal**: Construct a policy-controlled, secure Windows desktop automation runtime.
+- **Deliverables**: `DesktopService`, `DesktopPolicy` with strict key/hotkey allowlists, `WindowsDesktopBackend` using native `ctypes` Win32 APIs, `DesktopResolver` for candidate mapping, stable runtime-local window ID mapping, foreground-target focus verification guards, and 7 desktop tools (`get_active_window`, `list_visible_windows`, `focus_window`, `type_text`, `press_key`, `press_hotkey`, `click_screen`).
+- **Expected Outcome**: The assistant can safely inspect and automate UI actions on Windows. All mutations are protected by the `CONFIRMATION` permission level, and a foreground focus change guard automatically aborts execution if the active window switches between approval and execution. Includes full E2E planned sequential diagnostics and unit test suite coverage.
 
 ## Phase 9: Advanced Features
 - **Goal**: Implement context-rich, long-term memory retrieval and advanced agent reasoning.

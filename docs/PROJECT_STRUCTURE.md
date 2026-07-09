@@ -144,6 +144,11 @@ Manages durable facts, projects, preferences, and assistant context persistence.
 - **`coordinator.py`**: MemoryWriteCoordinator orchestrating background async executions and resource serialization.
 - **`guard.py`**: Narrow deterministic pattern matching secret guard.
 
+### `app/services/`
+Provides domain services and business logic abstractions.
+- **`filesystem/`**: Safe root-bounded filesystem policy and service implementation.
+- **`desktop/`**: Policy-controlled Windows desktop interaction service, policy engine, ctypes backend, and candidate resolver.
+
 ### `app/tools/`
 Manages local executable system tools with permission levels.
 - **`base.py`**: Defines abstract `BaseTool` class contract.
@@ -155,6 +160,7 @@ Manages local executable system tools with permission levels.
 - **`builtin/process.py`**: Active process enumeration and search tools.
 - **`builtin/applications.py`**: Windows registry-based application discovery tools.
 - **`builtin/filesystem.py`**: Safe non-recursive list directory and bounded text file reading tools.
+- **`builtin/desktop.py`**: Policy-controlled desktop active/visible window, focus, type text, press key, press hotkey, and click screen tools.
 
 ### `app/utils/`
 Provides shared utilities.
@@ -164,7 +170,6 @@ Provides shared utilities.
 ### Reserved Packages (Reserved for Future Implementation)
 The following directories are empty placeholder packages (except for `__init__.py`) reserved for future phases of the project roadmap:
 - **`app/prompts/`**: Externalized prompt files.
-- **`app/services/`**: Third-party API integrations (e.g. email, calendars).
 - **`app/ui/`**: Desktop GUI views and window widgets (PySide6).
 - **`app/voice/`**: Audio capture, VAD, Whisper STT, and Kokoro TTS modules.
 
@@ -185,4 +190,9 @@ The following directories are empty placeholder packages (except for `__init__.p
   - **`test_filesystem_tools.py`**: Diagnostic testing for directory listing and safe text file reading.
   - **`test_local_tool_selection.py`**: Verify semantic tool selection rules via Ollama client.
   - **`test_planned_local_environment.py`**: Verify E2E planning and execution for local environment analysis.
-- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, and local capability tools.
+  - **`test_desktop_policy.py`**: Verify allowed keys, hotkeys canonicalizations, screen boundaries validation.
+  - **`test_window_discovery.py`**: E2E native window enumeration and foreground window details query.
+  - **`test_desktop_approval.py`**: Verify typing tool call confirmation suspense, database insertion, and active focus safety guard.
+  - **`test_agent_desktop.py`**: E2E direct request to type text verifying prompt parsing, suspension, approval, and execution.
+  - **`test_planned_desktop.py`**: E2E planned request (focus window then type text) verifying planner output, step-by-step executions, double approval suspenses, and final synthesis.
+- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, local capability tools, filesystem policy/resolver/service, and desktop interaction subsystem (`test_desktop_service.py`).

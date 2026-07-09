@@ -212,3 +212,40 @@ To expand Jarvis's capabilities without introducing vulnerabilities, a safe loca
 - `find_installed_application` (SAFE): Searches Windows registry records for installed programs by name.
 - `list_directory` (SAFE): Non-recursive directory structure inspection (directories first, then files alphabetically).
 - `read_text_file` (SAFE): Reads text-only files with BOM/UTF-8 decoding and character limits.
+
+---
+
+## 13. Controlled Filesystem Actions Layer
+
+To allow safe mutations under a strict security model, the filesystem actions layer resolves logical paths dynamically relative to active environment roots:
+- **Logical Root Mapping**: Prevents absolute paths, drive specifiers, UNC paths, and traversal (`..`) escapes. All inputs map to keys: `desktop`, `documents`, `downloads`, `workspace`.
+- **Atomic Operations**: File writes use temporary staging files and atomic replacement.
+- **Confirmations**: Operations are secured under the `CONFIRMATION` permission level, requiring human approval via the database-persisted PendingAction runtime.
+
+### Implemented Built-in Tools
+- `inspect_path` (SAFE): Retrieves file sizes, type, and timestamps.
+- `list_directory` (SAFE): Enforces non-recursive content lists.
+- `create_directory` (CONFIRMATION): Safely registers directory creation.
+- `write_text_file` (CONFIRMATION): Validates blacklisted extensions and content bounds.
+- `move_path` (CONFIRMATION): Safely relocates files/folders across logical roots.
+- `delete_path` (CONFIRMATION): Safely deletes directories (empty or recursive) and files.
+
+---
+
+## 14. Controlled Desktop Interaction Layer
+
+The desktop interaction layer implements secure, policy-controlled Windows automation with a focus-transition guard:
+- **Ctypes Windows Backend**: Interacts with top-level windows (`EnumWindows`, `SetForegroundWindow`, `ShowWindow`) and inputs (`SendInput`, `mouse_event`) without installing heavyweight GUI packages.
+- **Strict Key/Hotkey Allowlist**: Centralizes permitted keys and combinations, rejecting modifier-only keys, function keys, and custom scripts.
+- **Screen Coordinate Verification**: Coordinates must be positive integers inside current screen metrics boundaries.
+- **Stable ID Mapping**: Shields native HWND handles from the LLM, mapping them to stable runtime IDs (e.g. `win_a13f82c1`).
+- **Foreground Safety Guard**: Compares the expected active window handle against the actual active foreground window immediately before execution. If active focus switches, it blocks the execution and returns `FOREGROUND_CHANGED` to prevent typing or clicking in the wrong target.
+
+### Implemented Built-in Tools
+- `get_active_window` (SAFE): Inspects the foreground window's stable ID, title, and process name.
+- `list_visible_windows` (SAFE): Lists visible top-level windows, sorted alphabetically, excluding Jarvis window.
+- `focus_window` (CONFIRMATION): Brings a window to the foreground and verifies focus success (supporting name fallback resolution).
+- `type_text` (CONFIRMATION): Types unicode characters into the active target window under the safety guard.
+- `press_key` (CONFIRMATION): Presses a single allowed key under the safety guard.
+- `press_hotkey` (CONFIRMATION): Executes a canonical modifier-hotkey combo under the safety guard.
+- `click_screen` (CONFIRMATION): Clicks a screen coordinate under the safety guard.

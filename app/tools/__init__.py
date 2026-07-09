@@ -16,6 +16,15 @@ from app.tools.builtin.filesystem import (
     MovePathTool,
     DeletePathTool,
 )
+from app.tools.builtin.desktop import (
+    GetActiveWindowTool,
+    ListVisibleWindowsTool,
+    FocusWindowTool,
+    TypeTextTool,
+    PressKeyTool,
+    PressHotkeyTool,
+    ClickScreenTool,
+)
 
 __all__ = [
     "BaseTool",
@@ -36,4 +45,11 @@ __all__ = [
     "WriteTextFileTool",
     "MovePathTool",
     "DeletePathTool",
+    "GetActiveWindowTool",
+    "ListVisibleWindowsTool",
+    "FocusWindowTool",
+    "TypeTextTool",
+    "PressKeyTool",
+    "PressHotkeyTool",
+    "ClickScreenTool",
 ]

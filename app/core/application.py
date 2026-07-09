@@ -273,6 +273,30 @@ class Application:
         )
         self.container.register("filesystem_service", filesystem_service)
 
+        # Initialize Desktop Subsystem
+        from app.services.desktop.policy import DesktopPolicy
+        from app.services.desktop.resolver import DesktopResolver
+        from app.services.desktop.service import DesktopService
+        from app.tools.builtin.desktop import (
+            GetActiveWindowTool,
+            ListVisibleWindowsTool,
+            FocusWindowTool,
+            TypeTextTool,
+            PressKeyTool,
+            PressHotkeyTool,
+            ClickScreenTool,
+        )
+
+        desktop_policy = DesktopPolicy()
+        desktop_resolver = DesktopResolver()
+        desktop_service = DesktopService(
+            policy=desktop_policy,
+            resolver=desktop_resolver,
+            list_limit=settings.desktop_window_list_limit,
+            text_max_chars=settings.desktop_text_max_chars
+        )
+        self.container.register("desktop_service", desktop_service)
+
         registry = ToolRegistry()
         registry.register(CurrentTimeTool())
         registry.register(SystemInfoTool())
@@ -291,6 +315,15 @@ class Application:
         registry.register(WriteTextFileTool(filesystem_service))
         registry.register(MovePathTool(filesystem_service))
         registry.register(DeletePathTool(filesystem_service))
+
+        # Register new desktop tools
+        registry.register(GetActiveWindowTool(desktop_service))
+        registry.register(ListVisibleWindowsTool(desktop_service))
+        registry.register(FocusWindowTool(desktop_service))
+        registry.register(TypeTextTool(desktop_service, approval_manager))
+        registry.register(PressKeyTool(desktop_service, approval_manager))
+        registry.register(PressHotkeyTool(desktop_service, approval_manager))
+        registry.register(ClickScreenTool(desktop_service, approval_manager))
 
         # 3. Create ToolExecutor with approval manager
         executor = ToolExecutor(registry, approval_manager)

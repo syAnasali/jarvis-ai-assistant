@@ -112,7 +112,13 @@ class ToolExecutor:
             # 4. Execute tool
             logger.info(f"Tool execution started: '{name}'")
             start_time = time.perf_counter()
-            output = tool.execute(**arguments)
+            if hasattr(tool, "current_approval_action_id"):
+                tool.current_approval_action_id = approval_action_id
+            try:
+                output = tool.execute(**arguments)
+            finally:
+                if hasattr(tool, "current_approval_action_id"):
+                    tool.current_approval_action_id = None
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.info(f"Tool execution completed: '{name}' in {duration_ms:.2f} ms")
 

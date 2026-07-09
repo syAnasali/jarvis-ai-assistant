@@ -191,3 +191,107 @@ class OSFilesystemError(FilesystemError):
     def __init__(self, message: str) -> None:
         super().__init__(message, error_code="FILESYSTEM_ERROR")
 
+
+# =====================================================================
+# DESKTOP INTERACTION EXCEPTIONS
+# =====================================================================
+
+class DesktopError(ToolExecutionError):
+    """Base exception class for all desktop interaction operation errors."""
+
+    def __init__(self, message: str, error_code: str = "DESKTOP_BACKEND_ERROR") -> None:
+        super().__init__(message)
+        self.error_code = error_code
+
+
+class WindowNotFoundError(DesktopError):
+    """Raised when the specified target window is not found."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="WINDOW_NOT_FOUND")
+
+
+class WindowAmbiguousError(DesktopError):
+    """Raised when a window query is ambiguous and matches multiple windows."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="WINDOW_AMBIGUOUS")
+
+
+class WindowStaleError(DesktopError):
+    """Raised when a window ID exists but the window is no longer alive."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="WINDOW_STALE")
+
+
+class WindowNotVisibleError(DesktopError):
+    """Raised when a focus target exists but is not visible."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="WINDOW_NOT_VISIBLE")
+
+
+class FocusFailedError(DesktopError):
+    """Raised when window focus operation fails verification."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="FOCUS_FAILED")
+
+
+class ForegroundChangedError(DesktopError):
+    """Raised when the foreground window changes before execution of a guarded tool."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="FOREGROUND_CHANGED")
+
+
+class InvalidTextError(DesktopError):
+    """Raised when input text contains invalid characters (e.g. NUL)."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="INVALID_TEXT")
+
+
+class TextTooLongError(DesktopError):
+    """Raised when input text exceeds maximum length constraints."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="TEXT_TOO_LONG")
+
+
+class InvalidKeyError(DesktopError):
+    """Raised when a keyboard key is not in the allowlist."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="INVALID_KEY")
+
+
+class InvalidHotkeyError(DesktopError):
+    """Raised when a keyboard shortcut combination is invalid or blocked."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="INVALID_HOTKEY")
+
+
+class InvalidCoordinatesError(DesktopError):
+    """Raised when mouse coordinates are negative or exceed screen bounds."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="INVALID_COORDINATES")
+
+
+class UnsupportedButtonError(DesktopError):
+    """Raised when a mouse button is not left or right."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="UNSUPPORTED_BUTTON")
+
+
+class DesktopBackendError(DesktopError):
+    """Raised when a native Windows API call or backend action fails."""
+
+    def __init__(self, message: str) -> None:
+        super().__init__(message, error_code="DESKTOP_BACKEND_ERROR")
+
+
