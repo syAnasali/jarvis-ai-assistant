@@ -244,7 +244,12 @@ class Application:
         # 2. Create and populate ToolRegistry
         from app.tools.builtin.disk import GetDiskUsageTool
         from app.tools.builtin.process import ListRunningProcessesTool, FindRunningProcessTool
-        from app.tools.builtin.applications import ListInstalledApplicationsTool, FindInstalledApplicationTool
+        from app.tools.builtin.applications import (
+            ListInstalledApplicationsTool,
+            FindInstalledApplicationTool,
+            ResolveApplicationTool,
+            LaunchApplicationTool
+        )
         from app.tools.builtin.filesystem import ListDirectoryTool, ReadTextFileTool
 
         registry = ToolRegistry()
@@ -255,6 +260,8 @@ class Application:
         registry.register(FindRunningProcessTool())
         registry.register(ListInstalledApplicationsTool())
         registry.register(FindInstalledApplicationTool())
+        registry.register(ResolveApplicationTool())
+        registry.register(LaunchApplicationTool())
         registry.register(ListDirectoryTool())
         registry.register(ReadTextFileTool())
 
@@ -363,7 +370,7 @@ class Application:
                         print()
 
                     # Check if suspended for confirmation
-                    messages = controller.conversation.get_messages()
+                    messages = controller.conversation.get_history()
                     if messages:
                         last_msg = messages[-1]
                         if last_msg.role.value == "assistant" and last_msg.metadata.get("confirmation_required"):

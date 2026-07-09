@@ -1,7 +1,7 @@
 """Performance and timing metrics models for the agent engine."""
 
 from dataclasses import dataclass, field
-from typing import List
+from typing import List, Any
 from app.ai.models import GenerationMetrics
 
 
@@ -48,3 +48,4 @@ class AgentExecutionMetrics:
     memories_persisted: int = 0
     pending_action_id: str | None = None
     confirmation_required: bool = False
+    tool_calls_data: list[dict[str, Any]] = ()

@@ -215,6 +215,18 @@ class AgentController:
                             self._active_plan = None
                             self._active_observations = None
                             
+                            serialized_obs = []
+                            for obs in exec_result.observations:
+                                serialized_obs.append({
+                                    "step_id": obs.step_id,
+                                    "step_sequence": obs.step_sequence,
+                                    "step_type": obs.step_type.value,
+                                    "success": obs.success,
+                                    "content": obs.content,
+                                    "tool_name": obs.tool_name,
+                                    "created_at": obs.created_at.isoformat() if obs.created_at else None
+                                })
+                            
                             metadata = {
                                 "execution_mode": "planned",
                                 "plan_id": exec_result.plan_id,
@@ -223,6 +235,7 @@ class AgentController:
                                 "steps_completed": exec_result.steps_completed,
                                 "steps_failed": exec_result.steps_failed,
                                 "tool_calls": exec_result.metrics.tool_calls,
+                                "plan_observations": serialized_obs
                             }
                             agent_response = AgentResponse(
                                 response_id=generate_response_id(),
@@ -265,8 +278,12 @@ class AgentController:
                             self.conversation_manager.add_message(self.active_session_id, tool_message)
                         self.conversation.add_message(tool_message)
                         
-                        # Re-prepare the request to load history including the tool message
-                        plan, formatted_messages = self._prepare_request(request)
+                        # Format history without adding a duplicate user message
+                        plan = self._planner.create_plan(request)
+                        history = self.conversation.get_history()
+                        if self.context_policy:
+                            history = self.context_policy.select_history(history)
+                        formatted_messages = self._formatter.format_history(history)
                         
                         # Run the remaining LLM loop
                         memory_matches_ids = ()
@@ -411,6 +428,18 @@ class AgentController:
                     )
                 else:
                     # Safe diagnostics metadata
+                    serialized_obs = []
+                    for obs in exec_result.observations:
+                        serialized_obs.append({
+                            "step_id": obs.step_id,
+                            "step_sequence": obs.step_sequence,
+                            "step_type": obs.step_type.value,
+                            "success": obs.success,
+                            "content": obs.content,
+                            "tool_name": obs.tool_name,
+                            "created_at": obs.created_at.isoformat() if obs.created_at else None
+                        })
+                    
                     metadata = {
                         "execution_mode": "planned",
                         "planning_confidence": decision.confidence,
@@ -420,6 +449,7 @@ class AgentController:
                         "steps_completed": exec_result.steps_completed,
                         "steps_failed": exec_result.steps_failed,
                         "tool_calls": exec_result.metrics.tool_calls,
+                        "plan_observations": serialized_obs
                     }
 
                     agent_response = AgentResponse(
@@ -456,6 +486,8 @@ class AgentController:
                         response_metadata["pending_action_id"] = run_result.pending_action_id
                         response_metadata["tool_name"] = run_result.requested_tools[0] if run_result.requested_tools else ""
                         response_metadata["reason"] = run_result.text
+                        if getattr(run_result, "tool_calls_data", None):
+                            response_metadata["tool_calls"] = run_result.tool_calls_data
 
                     agent_response = AgentResponse(
                         response_id=generate_response_id(),
@@ -647,7 +679,12 @@ class AgentController:
                             self.conversation_manager.add_message(self.active_session_id, tool_message)
                         self.conversation.add_message(tool_message)
                         
-                        plan, formatted_messages = self._prepare_request(request)
+                        # Format history without adding a duplicate user message
+                        plan = self._planner.create_plan(request)
+                        history = self.conversation.get_history()
+                        if self.context_policy:
+                            history = self.context_policy.select_history(history)
+                        formatted_messages = self._formatter.format_history(history)
                         
                         memory_matches_ids = ()
                         memory_duration_ms = 0.0
@@ -689,6 +726,8 @@ class AgentController:
                                     response_metadata["confirmation_required"] = True
                                     response_metadata["pending_action_id"] = exec_metrics.pending_action_id
                                     response_metadata["tool_name"] = exec_metrics.requested_tools[0] if exec_metrics.requested_tools else ""
+                                    if getattr(exec_metrics, "tool_calls_data", None):
+                                        response_metadata["tool_calls"] = exec_metrics.tool_calls_data
                                 break
                         
                         full_response_text = "".join(accumulator)

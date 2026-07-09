@@ -54,7 +54,13 @@ class PromptManager:
             "- Do not call tools for general knowledge that can be answered reliably without "
             "current external state.\n"
             "- After a successful tool result, ground the answer in that result.\n"
-            "- Do not contradict successful tool output."
+            "- Do not contradict successful tool output.\n"
+            "- To open, launch, or start any application, you MUST first call `resolve_application` "
+            "with the application name to get the trusted `application_id`. You must never guess or fabricate "
+            "an application ID. You must call `launch_application` using ONLY the resolved ID.\n"
+            "- If `resolve_application` returns AMBIGUOUS, you must ask the user to clarify which candidate they "
+            "mean by listing the candidate names and IDs, and do not launch anything. If it returns NOT_FOUND, "
+            "inform the user that it could not be resolved locally."
         )
 
     def memory_extraction_prompt(self) -> str:

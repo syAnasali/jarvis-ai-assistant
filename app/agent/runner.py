@@ -30,6 +30,7 @@ class AgentRunResult:
     requested_tools: tuple[str, ...] = ()
     pending_action_id: str | None = None
     confirmation_required: bool = False
+    tool_calls_data: list[dict[str, Any]] | None = None
 
 
 class AgentRunner:
@@ -187,6 +188,8 @@ class AgentRunner:
                     iteration_metrics_list.append(iter_metric)
                     
                     total_duration_ms = (time.perf_counter() - start_time) * 1000
+                    formatted_turn = self._format_assistant_turn(raw_response, parsed_calls)
+                    tool_calls_payload = formatted_turn.get("tool_calls", [])
                     exec_metrics = AgentExecutionMetrics(
                         total_duration_ms=total_duration_ms,
                         iterations=iteration,
@@ -195,14 +198,16 @@ class AgentRunner:
                         iteration_metrics=iteration_metrics_list,
                         requested_tools=tuple(all_requested_tools),
                         pending_action_id=tool_result.metadata.get("pending_action_id"),
-                        confirmation_required=True
+                        confirmation_required=True,
+                        tool_calls_data=tool_calls_payload
                     )
                     return AgentRunResult(
                         text=tool_result.error or f"Execution of tool '{tc.tool_name}' requires your confirmation.",
                         execution_metrics=exec_metrics,
                         requested_tools=tuple(all_requested_tools),
                         pending_action_id=tool_result.metadata.get("pending_action_id"),
-                        confirmation_required=True
+                        confirmation_required=True,
+                        tool_calls_data=tool_calls_payload
                     )
 
                 # Format tool result turn
@@ -385,6 +390,8 @@ class AgentRunner:
                         iteration_metrics_list.append(iter_metric)
                         
                         total_duration_ms = (time.perf_counter() - start_time) * 1000
+                        formatted_turn = self._format_assistant_turn(raw_response_for_structure, tool_calls_accumulator, "".join(text_accumulator))
+                        tool_calls_payload = formatted_turn.get("tool_calls", [])
                         exec_metrics = AgentExecutionMetrics(
                             total_duration_ms=total_duration_ms,
                             iterations=iteration,
@@ -393,7 +400,8 @@ class AgentRunner:
                             iteration_metrics=iteration_metrics_list,
                             requested_tools=tuple(all_requested_tools),
                             pending_action_id=tool_result.metadata.get("pending_action_id"),
-                            confirmation_required=True
+                            confirmation_required=True,
+                            tool_calls_data=tool_calls_payload
                         )
                         yield tool_result.error or f"Execution of tool '{tc.tool_name}' requires your confirmation."
                         return exec_metrics

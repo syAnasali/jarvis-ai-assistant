@@ -9,24 +9,37 @@ def prompt_user_approval(tool_name: str, reason: str, arguments: Dict[str, Any])
 
     KeyboardInterrupt or EOF defaults to rejection.
     """
-    sys.stdout.write("\n==========================================================\n")
-    sys.stdout.write("Jarvis wants to perform an action requiring confirmation.\n\n")
-    sys.stdout.write("Action:\n")
-    sys.stdout.write(f"  Tool: {tool_name}\n")
-    sys.stdout.write(f"  Reason: {reason}\n")
-    sys.stdout.write("  Arguments:\n")
-    
-    for key, val in arguments.items():
-        # Basic mask to prevent printing obvious secrets in terminal
-        key_lower = key.lower()
-        if any(s in key_lower for s in ("password", "secret", "token", "key", "auth")):
-            display_val = "********"
-        else:
-            display_val = str(val)
-        sys.stdout.write(f"    {key}: {display_val}\n")
+    if tool_name == "launch_application":
+        app_id = arguments.get("application_id", "")
+        from app.services.applications.resolver import ApplicationResolver
+        resolver = ApplicationResolver()
+        app = resolver.get_by_id(app_id)
+        app_name = app.name if app else "Unknown Application"
+
+        sys.stdout.write("\n==========================================================\n")
+        sys.stdout.write("Jarvis wants to perform an action requiring confirmation.\n\n")
+        sys.stdout.write("Action:\n")
+        sys.stdout.write(f"  Launch application: {app_name}\n")
+        sys.stdout.write("==========================================================\n")
+        sys.stdout.flush()
+    else:
+        sys.stdout.write("\n==========================================================\n")
+        sys.stdout.write("Jarvis wants to perform an action requiring confirmation.\n\n")
+        sys.stdout.write("Action:\n")
+        sys.stdout.write(f"  Tool: {tool_name}\n")
+        sys.stdout.write(f"  Reason: {reason}\n")
+        sys.stdout.write("  Arguments:\n")
         
-    sys.stdout.write("==========================================================\n")
-    sys.stdout.flush()
+        for key, val in arguments.items():
+            key_lower = key.lower()
+            if any(s in key_lower for s in ("password", "secret", "token", "key", "auth")):
+                display_val = "********"
+            else:
+                display_val = str(val)
+            sys.stdout.write(f"    {key}: {display_val}\n")
+            
+        sys.stdout.write("==========================================================\n")
+        sys.stdout.flush()
 
     try:
         user_input = input("\nApprove this action? [y/N]: ").strip().lower()

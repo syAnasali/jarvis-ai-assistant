@@ -24,7 +24,7 @@ class ExecutionRouter:
         connectors = ["then", "after that", "finally", "afterwards"]
         for conn in connectors:
             if conn in text:
-                score += 0.4
+                score += 0.5
                 signals.append(f"connector:{conn}")
 
         # Planning / analytical verbs

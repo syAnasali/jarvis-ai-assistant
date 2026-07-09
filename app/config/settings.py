@@ -45,6 +45,9 @@ class Settings(BaseSettings):
     tool_max_text_characters: int = 50000
     approval_timeout_seconds: int = 120
 
+    application_resolution_max_candidates: int = 10
+    application_discovery_max_entries: int = 2000
+
     @classmethod
     def validate_relationships(cls, values: dict) -> None:
         """Validates tool settings ranges and relationships."""
@@ -62,6 +65,10 @@ class Settings(BaseSettings):
             raise ValueError("approval_timeout_seconds must be positive")
         if values.get("approval_timeout_seconds", 120) > 3600:
             raise ValueError("approval_timeout_seconds cannot exceed 3600 seconds")
+        if values.get("application_resolution_max_candidates", 10) <= 0:
+            raise ValueError("application_resolution_max_candidates must be positive")
+        if values.get("application_discovery_max_entries", 2000) <= 0:
+            raise ValueError("application_discovery_max_entries must be positive")
 
     from pydantic import model_validator
     @model_validator(mode="after")
