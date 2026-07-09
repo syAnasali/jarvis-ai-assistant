@@ -144,6 +144,18 @@ Manages durable facts, projects, preferences, and assistant context persistence.
 - **`coordinator.py`**: MemoryWriteCoordinator orchestrating background async executions and resource serialization.
 - **`guard.py`**: Narrow deterministic pattern matching secret guard.
 
+### `app/tools/`
+Manages local executable system tools with permission levels.
+- **`base.py`**: Defines abstract `BaseTool` class contract.
+- **`models.py`**: Defines `ToolPermission` and `ToolResult` schemas.
+- **`registry.py`**: Implements `ToolRegistry` to register and retrieve built-in tools.
+- **`executor.py`**: Implements `ToolExecutor` enforcing safety/permission restrictions.
+- **`builtin/system.py`**: Built-in time and system information tools.
+- **`builtin/disk.py`**: Disk usage inspection tools.
+- **`builtin/process.py`**: Active process enumeration and search tools.
+- **`builtin/applications.py`**: Windows registry-based application discovery tools.
+- **`builtin/filesystem.py`**: Safe non-recursive list directory and bounded text file reading tools.
+
 ### `app/utils/`
 Provides shared utilities.
 - **`id_generator.py`**: Centralizes unique ID generation for messages, requests, responses, and memories.
@@ -153,7 +165,6 @@ Provides shared utilities.
 The following directories are empty placeholder packages (except for `__init__.py`) reserved for future phases of the project roadmap:
 - **`app/prompts/`**: Externalized prompt files.
 - **`app/services/`**: Third-party API integrations (e.g. email, calendars).
-- **`app/tools/`**: Local sandboxed system execution tools.
 - **`app/ui/`**: Desktop GUI views and window widgets (PySide6).
 - **`app/voice/`**: Audio capture, VAD, Whisper STT, and Kokoro TTS modules.
 
@@ -170,4 +181,8 @@ The following directories are empty placeholder packages (except for `__init__.p
   - **`test_memory_restart.py`**: Cross-restart memory persistence diagnostics.
   - **`test_memory_extraction_precision.py`**: Verbatim evidence and claim-support conservatism diagnostic.
   - **`test_memory_response_latency.py`**: Measure response latency and verify background non-blocking execution.
-- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, and memory write service.
+  - **`test_local_capabilities.py`**: Verify local system info, disk space, and process/app inspection.
+  - **`test_filesystem_tools.py`**: Diagnostic testing for directory listing and safe text file reading.
+  - **`test_local_tool_selection.py`**: Verify semantic tool selection rules via Ollama client.
+  - **`test_planned_local_environment.py`**: Verify E2E planning and execution for local environment analysis.
+- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, and local capability tools.

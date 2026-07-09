@@ -190,4 +190,25 @@ The architecture defines dedicated boundaries for implementing future capabiliti
 - **Single Model Backend**: Currently only implements `OllamaProvider` as a concrete LLM provider.
 - **Static Planning Logic**: The `Planner` does not classify intents dynamically; it hardcodes the plan route to `CHAT` (using the LLM).
 - **Volatile Conversation Logs**: Conversation message logs are volatile and vanish immediately when the CLI process exits, though user facts and preferences are persistently stored in long-term memory.
-- **Limited Tool Capabilities**: System calls, directory reads, and web searches cannot be performed outside the system info and current time tools.
+
+---
+
+## 12. Safe Local Capability Layer
+
+To expand Jarvis's capabilities without introducing vulnerabilities, a safe local capability layer was implemented. This layer enables secure local machine inspection while preventing arbitrary system control or execution.
+
+### Architectural Principles
+- **Read-Only Scope**: The layer strictly implements information discovery and inspection (reading disk metrics, process lists, directory structures, and text files). It forbids launching subprocesses, shell commands, executing scripts, terminating processes, or writing files.
+- **Path Verification**: All path-based tools run inputs through a centralized validation helper (`validate_and_resolve_path`). This expands user homedir shortcuts (`~`), resolves absolute paths, verifies existence, matches expected file/directory types, rejects null bytes (`\x00`), and checks against a sensitive filename denylist.
+- **Sensitive Filename Denylist**: Protects secrets by explicitly rejecting access to sensitive filenames (e.g. `.env`, `.env.*`, `id_rsa`, `id_ed25519`, `credentials.json`, `*.pem`, `*.key`).
+- **Deterministic Limits & Bounding**: All list and read operations are bounded to protect system memory and LLM context. They enforce maximum limits (e.g. max list count, max file size of 2MB, and max returned character limits) with truncation flags returned in output metadata.
+- **Deduplication and Sorting**: Lists of running processes and installed applications are sorted deterministically, and Windows applications are deduplicated by name during registry traversal.
+
+### Implemented Built-in Tools
+- `get_disk_usage` (SAFE): Inspects total, used, free bytes, and used percentage.
+- `list_running_processes` (SAFE): Enumerates running processes returning only PID, process name, and executable path.
+- `find_running_process` (SAFE): Finds active processes by case-insensitive name matching.
+- `list_installed_applications` (SAFE): Queries Windows registry paths (HKLM, HKCU, and Wow6432Node) to discover installed applications.
+- `find_installed_application` (SAFE): Searches Windows registry records for installed programs by name.
+- `list_directory` (SAFE): Non-recursive directory structure inspection (directories first, then files alphabetically).
+- `read_text_file` (SAFE): Reads text-only files with BOM/UTF-8 decoding and character limits.

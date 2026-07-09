@@ -31,6 +31,7 @@ class StepStatus(Enum):
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
     SKIPPED = "SKIPPED"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
 
 
 class PlanStatus(Enum):
@@ -41,6 +42,7 @@ class PlanStatus(Enum):
     RUNNING = "RUNNING"
     COMPLETED = "COMPLETED"
     FAILED = "FAILED"
+    WAITING_APPROVAL = "WAITING_APPROVAL"
 
 
 @dataclass(frozen=True)

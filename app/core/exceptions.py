@@ -97,3 +97,11 @@ class PlanLimitError(PlanningError):
 
 class StepExecutionError(PlanningError):
     """Raised when a specific plan step execution fails."""
+
+
+class ApprovalError(JarvisError):
+    """Base exception class for all approval subsystem errors."""
+
+
+class ApprovalPersistenceError(ApprovalError):
+    """Raised when an approval database or persistence operation fails."""

@@ -225,13 +225,41 @@ class Application:
             self.logger.critical(f"Failed to initialize conversation subsystem: {e}")
             raise ApplicationStartupError(f"Conversation subsystem initialization failed: {e}") from e
 
+        # 1.6. Initialize Action Approval components
+        from app.approval.repository import SQLiteApprovalRepository
+        from app.approval.manager import ApprovalManager
+
+        try:
+            approval_repository = SQLiteApprovalRepository(database_path=DATABASE_PATH)
+            approval_manager = ApprovalManager(
+                repository=approval_repository,
+                timeout_seconds=settings.approval_timeout_seconds
+            )
+            self.container.register("approval_repository", approval_repository)
+            self.container.register("approval_manager", approval_manager)
+        except Exception as e:
+            self.logger.critical(f"Failed to initialize approval subsystem: {e}")
+            raise ApplicationStartupError(f"Approval subsystem initialization failed: {e}") from e
+
         # 2. Create and populate ToolRegistry
+        from app.tools.builtin.disk import GetDiskUsageTool
+        from app.tools.builtin.process import ListRunningProcessesTool, FindRunningProcessTool
+        from app.tools.builtin.applications import ListInstalledApplicationsTool, FindInstalledApplicationTool
+        from app.tools.builtin.filesystem import ListDirectoryTool, ReadTextFileTool
+
         registry = ToolRegistry()
         registry.register(CurrentTimeTool())
         registry.register(SystemInfoTool())
+        registry.register(GetDiskUsageTool())
+        registry.register(ListRunningProcessesTool())
+        registry.register(FindRunningProcessTool())
+        registry.register(ListInstalledApplicationsTool())
+        registry.register(FindInstalledApplicationTool())
+        registry.register(ListDirectoryTool())
+        registry.register(ReadTextFileTool())
 
-        # 3. Create ToolExecutor
-        executor = ToolExecutor(registry)
+        # 3. Create ToolExecutor with approval manager
+        executor = ToolExecutor(registry, approval_manager)
 
         # 4. Create parser
         parser = ResponseParser()
@@ -265,7 +293,7 @@ class Application:
         self.container.register("planning_validator", planning_validator)
         self.container.register("planning_executor", task_executor)
 
-        # 7. Initialize Controller with AgentRunner and Memory components
+        # 7. Initialize Controller with AgentRunner, Memory, and Approval components
         conversation = Conversation()
         context_manager = ContextManager()
         controller = AgentController(
@@ -281,7 +309,8 @@ class Application:
             router=planning_router,
             planner=planning_planner,
             validator=planning_validator,
-            executor=task_executor
+            executor=task_executor,
+            approval_manager=approval_manager
         )
         controller.active_session_id = active_session.session_id
         self.container.register("controller", controller)
@@ -317,21 +346,47 @@ class Application:
                 metadata={}
             )
 
-            label_printed = False
             try:
-                # Get the streaming iterator
-                stream = controller.process_request_stream(request)
+                active_approval_id = None
+                while True:
+                    label_printed = False
+                    stream = controller.process_request_stream(request, approval_action_id=active_approval_id)
 
-                # Iterate over the text chunks
-                for chunk in stream:
-                    if not label_printed:
-                        print("Jarvis > ", end="", flush=True)
-                        label_printed = True
-                    print(chunk, end="", flush=True)
+                    for chunk in stream:
+                        if not label_printed:
+                            print("Jarvis > ", end="", flush=True)
+                            label_printed = True
+                        print(chunk, end="", flush=True)
 
-                if label_printed:
-                    print()
-                    print()
+                    if label_printed:
+                        print()
+                        print()
+
+                    # Check if suspended for confirmation
+                    messages = controller.conversation.get_messages()
+                    if messages:
+                        last_msg = messages[-1]
+                        if last_msg.role.value == "assistant" and last_msg.metadata.get("confirmation_required"):
+                            action_id = last_msg.metadata.get("pending_action_id")
+                            tool_name = last_msg.metadata.get("tool_name")
+                            reason = last_msg.metadata.get("reason", "")
+                            
+                            approval_manager = self.container.get("approval_manager")
+                            action = approval_manager.get(action_id)
+                            if action:
+                                from app.approval.cli import prompt_user_approval
+                                approved = prompt_user_approval(tool_name, reason, action.arguments)
+                                if approved:
+                                    approval_manager.approve(action_id)
+                                    active_approval_id = action_id
+                                    # Continue loop to resume with approved action
+                                    continue
+                                else:
+                                    approval_manager.reject(action_id)
+                                    active_approval_id = action_id
+                                    # Continue loop to resume with rejected action (and output cancellation response)
+                                    continue
+                    break  # Break out of loop if not suspended or no more approvals needed
             except LLMError as le:
                 self.logger.error(f"LLM Error during stream: {le}")
                 if label_printed:

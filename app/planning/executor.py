@@ -43,13 +43,22 @@ class TaskExecutor:
         self._tool_executor = tool_executor
         self._validator = validator or PlanValidator(registry)
 
-    def execute(self, plan: TaskPlan, original_request_text: str, routing_confidence: float = 1.0) -> PlanExecutionResult:
+    def execute(
+        self,
+        plan: TaskPlan,
+        original_request_text: str,
+        routing_confidence: float = 1.0,
+        approval_action_id: str | None = None,
+        previous_observations: List[StepObservation] | None = None
+    ) -> PlanExecutionResult:
         """Runs the validation and sequential execution lifecycle for a TaskPlan.
 
         Args:
             plan: The TaskPlan to execute.
             original_request_text: The user's original raw prompt text.
             routing_confidence: The confidence score from the router.
+            approval_action_id: Optional ID of the approved PendingAction.
+            previous_observations: Optional list of observations from prior runs.
 
         Returns:
             PlanExecutionResult: The aggregated result of plan execution.
@@ -66,18 +75,20 @@ class TaskExecutor:
             logger.error(f"Plan validation bypassed, step count {len(plan.steps)} exceeds limit {max_steps}.")
             raise PlanLimitError(f"Plan exceeds the maximum limit of {max_steps} steps.")
 
-        # 2. Structural plan validation
-        try:
-            self._validator.validate(plan)
-            plan.status = PlanStatus.VALIDATED
-        except Exception as e:
-            logger.error(f"Plan validation failed: {e}")
-            raise
+        # 2. Structural plan validation (only if not resuming)
+        if plan.status == PlanStatus.CREATED:
+            try:
+                self._validator.validate(plan)
+                plan.status = PlanStatus.VALIDATED
+            except Exception as e:
+                logger.error(f"Plan validation failed: {e}")
+                raise
 
+        # If we are resuming, the status might be WAITING_APPROVAL. Set it to RUNNING.
         plan.status = PlanStatus.RUNNING
-        logger.info(f"Starting plan execution: plan_id={plan.plan_id}, steps={len(plan.steps)}")
+        logger.info(f"Starting/resuming plan execution: plan_id={plan.plan_id}, steps={len(plan.steps)}")
 
-        observations: List[StepObservation] = []
+        observations: List[StepObservation] = list(previous_observations) if previous_observations else []
         steps_completed = 0
         steps_failed = 0
         steps_skipped = 0
@@ -89,14 +100,23 @@ class TaskExecutor:
         ordered_steps = sorted(plan.steps, key=lambda s: s.sequence)
         failed_step_ref = None
         failure_reason = ""
+        suspended_step_ref = None
+        suspended_action_id = None
+        suspended_reason = ""
 
         for step in ordered_steps:
-            if failed_step_ref is not None:
-                # Subsequent steps are marked SKIPPED after a failure
+            # Skip steps already completed
+            if step.status == StepStatus.COMPLETED:
+                steps_completed += 1
+                continue
+
+            if failed_step_ref is not None or suspended_step_ref is not None:
+                # Subsequent steps are marked SKIPPED after a failure or suspension
                 step.status = StepStatus.SKIPPED
                 steps_skipped += 1
                 continue
 
+            is_suspended_step = (step.status == StepStatus.WAITING_APPROVAL)
             step.status = StepStatus.RUNNING
             step_start = time.perf_counter()
             logger.info(f"Running step {step.sequence}: {step.description}")
@@ -107,8 +127,19 @@ class TaskExecutor:
                     tc = ToolCall(tool_name=step.tool_name, arguments=step.tool_arguments)
                     tool_calls_count += 1
                     
-                    tool_result = self._tool_executor.execute(tc)
+                    # If this step was WAITING_APPROVAL, we pass the approval_action_id to ToolExecutor
+                    current_approval_id = approval_action_id if is_suspended_step else None
+                    tool_result = self._tool_executor.execute(tc, approval_action_id=current_approval_id)
                     
+                    # Check if confirmation is required
+                    if tool_result.metadata.get("confirmation_required"):
+                        logger.warning(f"Step {step.sequence} requires confirmation: {tool_result.error}")
+                        step.status = StepStatus.WAITING_APPROVAL
+                        suspended_step_ref = step
+                        suspended_action_id = tool_result.metadata.get("pending_action_id")
+                        suspended_reason = tool_result.metadata.get("reason", "")
+                        break
+
                     obs_content = ""
                     success = tool_result.success
                     if success:
@@ -231,7 +262,19 @@ class TaskExecutor:
         # 3. Finalize plan outcome
         duration_ms = (time.perf_counter() - start_time) * 1000
         
-        if failed_step_ref is not None:
+        result_metadata = {}
+        if suspended_step_ref is not None:
+            plan.status = PlanStatus.WAITING_APPROVAL
+            logger.warning(f"Plan execution suspended at step {suspended_step_ref.sequence} for confirmation.")
+            final_text = f"Execution of tool '{suspended_step_ref.tool_name}' requires your confirmation."
+            success_status = False
+            result_metadata = {
+                "confirmation_required": True,
+                "pending_action_id": suspended_action_id,
+                "tool_name": suspended_step_ref.tool_name,
+                "reason": suspended_reason
+            }
+        elif failed_step_ref is not None:
             plan.status = PlanStatus.FAILED
             logger.warning(f"Plan failed at step {failed_step_ref.sequence}.")
             
@@ -246,7 +289,7 @@ class TaskExecutor:
         else:
             plan.status = PlanStatus.COMPLETED
             # Retrieve the last observation content (the output of the final SYNTHESIS step)
-            final_text = observations[-1].content
+            final_text = observations[-1].content if observations else "No steps were executed."
             success_status = True
 
         metrics = PlanningMetrics(
@@ -288,7 +331,7 @@ class TaskExecutor:
             steps_failed=steps_failed,
             observations=observations,
             metrics=metrics,
-            metadata={}
+            metadata=result_metadata
         )
 
     def _get_bounded_observations(self, observations: List[StepObservation]) -> List[StepObservation]:

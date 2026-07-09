@@ -64,3 +64,12 @@ def generate_step_id() -> str:
         str: Generated step identifier.
     """
     return f"step_{uuid.uuid4().hex[:8]}"
+
+
+def generate_action_id() -> str:
+    """Generates a unique pending action identifier.
+
+    Returns:
+        str: Generated pending action identifier.
+    """
+    return f"action_{uuid.uuid4().hex[:8]}"

@@ -22,10 +22,10 @@ This document outlines the multi-phase roadmap for developing the Jarvis AI Assi
 - **Deliverables**: Main execution loop, state management, and interaction lifecycle hooks.
 - **Expected Outcome**: An autonomous execution cycle that continuously processes incoming inputs and determines next actions.
 
-## Phase 5: Tool Calling
-- **Goal**: Implement a safe and extensible tool registration and execution framework.
-- **Deliverables**: Tool decorator/base class, arguments validator, and execution sandbox runner.
-- **Expected Outcome**: The agent loop can parse model intents, validate parameters, and execute local functions safely.
+## Phase 5: Tool Calling [Complete]
+- **Goal**: Implement a safe and extensible tool registration and execution framework, and establish a secure local capability foundation.
+- **Deliverables**: ToolRegistry, ToolExecutor with permission checks, GetDiskUsageTool, ListRunningProcessesTool, FindRunningProcessTool, ListInstalledApplicationsTool, FindInstalledApplicationTool, ListDirectoryTool, and ReadTextFileTool.
+- **Expected Outcome**: The agent can inspect local machine state (disk space, processes, Windows registry-installed programs, and non-recursive directory lists/text files) safely and deterministically, using the ToolExecutor security boundary, with full regression tests and diagnostics.
 
 ## Phase 6: Memory Engine [Complete]
 - **Goal**: Set up local database storage, retrieval, context injection, and write pipeline for persistence.

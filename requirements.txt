@@ -14,3 +14,4 @@ python-dotenv
 pytest
 ruff
 pyinstaller
+psutil

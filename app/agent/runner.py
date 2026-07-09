@@ -28,6 +28,8 @@ class AgentRunResult:
     text: str
     execution_metrics: AgentExecutionMetrics
     requested_tools: tuple[str, ...] = ()
+    pending_action_id: str | None = None
+    confirmation_required: bool = False
 
 
 class AgentRunner:
@@ -173,6 +175,36 @@ class AgentRunner:
                 logger.info(f"Requested tool name: '{tc.tool_name}'")
                 tool_result = self._executor.execute(tc)
                 
+                # Intercept confirmation required
+                if tool_result.metadata.get("confirmation_required"):
+                    logger.warning(f"Agent execution suspended: confirmation required for tool '{tc.tool_name}'")
+                    iter_metric = AgentIterationMetrics(
+                        iteration=iteration,
+                        duration_ms=(time.perf_counter() - iter_start_time) * 1000,
+                        model_metrics=metrics,
+                        tool_calls_count=len(parsed_calls)
+                    )
+                    iteration_metrics_list.append(iter_metric)
+                    
+                    total_duration_ms = (time.perf_counter() - start_time) * 1000
+                    exec_metrics = AgentExecutionMetrics(
+                        total_duration_ms=total_duration_ms,
+                        iterations=iteration,
+                        model_calls=model_calls,
+                        tool_calls=tool_calls_count,
+                        iteration_metrics=iteration_metrics_list,
+                        requested_tools=tuple(all_requested_tools),
+                        pending_action_id=tool_result.metadata.get("pending_action_id"),
+                        confirmation_required=True
+                    )
+                    return AgentRunResult(
+                        text=tool_result.error or f"Execution of tool '{tc.tool_name}' requires your confirmation.",
+                        execution_metrics=exec_metrics,
+                        requested_tools=tuple(all_requested_tools),
+                        pending_action_id=tool_result.metadata.get("pending_action_id"),
+                        confirmation_required=True
+                    )
+
                 # Format tool result turn
                 tool_turn = self._format_tool_turn(tc, tool_result)
                 working_messages.append(tool_turn)
@@ -341,6 +373,31 @@ class AgentRunner:
                     logger.info(f"Requested tool name: '{tc.tool_name}'")
                     tool_result = self._executor.execute(tc)
                     
+                    # Intercept confirmation required
+                    if tool_result.metadata.get("confirmation_required"):
+                        logger.warning(f"Agent streaming suspended: confirmation required for tool '{tc.tool_name}'")
+                        iter_metric = AgentIterationMetrics(
+                            iteration=iteration,
+                            duration_ms=iter_duration_ms,
+                            model_metrics=metrics,
+                            tool_calls_count=len(tool_calls_accumulator)
+                        )
+                        iteration_metrics_list.append(iter_metric)
+                        
+                        total_duration_ms = (time.perf_counter() - start_time) * 1000
+                        exec_metrics = AgentExecutionMetrics(
+                            total_duration_ms=total_duration_ms,
+                            iterations=iteration,
+                            model_calls=model_calls,
+                            tool_calls=tool_calls_count,
+                            iteration_metrics=iteration_metrics_list,
+                            requested_tools=tuple(all_requested_tools),
+                            pending_action_id=tool_result.metadata.get("pending_action_id"),
+                            confirmation_required=True
+                        )
+                        yield tool_result.error or f"Execution of tool '{tc.tool_name}' requires your confirmation."
+                        return exec_metrics
+
                     # Format tool result turn
                     tool_turn = self._format_tool_turn(tc, tool_result)
                     working_messages.append(tool_turn)

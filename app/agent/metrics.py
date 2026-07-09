@@ -46,3 +46,5 @@ class AgentExecutionMetrics:
     memory_extraction_duration_ms: float = 0.0
     memories_extracted: int = 0
     memories_persisted: int = 0
+    pending_action_id: str | None = None
+    confirmation_required: bool = False
