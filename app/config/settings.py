@@ -48,6 +48,10 @@ class Settings(BaseSettings):
     application_resolution_max_candidates: int = 10
     application_discovery_max_entries: int = 2000
 
+    filesystem_list_max_entries: int = 100
+    filesystem_write_max_chars: int = 100000
+    filesystem_relative_path_max_length: int = 512
+
     @classmethod
     def validate_relationships(cls, values: dict) -> None:
         """Validates tool settings ranges and relationships."""
@@ -69,6 +73,19 @@ class Settings(BaseSettings):
             raise ValueError("application_resolution_max_candidates must be positive")
         if values.get("application_discovery_max_entries", 2000) <= 0:
             raise ValueError("application_discovery_max_entries must be positive")
+            
+        if values.get("filesystem_list_max_entries", 100) <= 0:
+            raise ValueError("filesystem_list_max_entries must be positive")
+        if values.get("filesystem_list_max_entries", 100) > 1000:
+            raise ValueError("filesystem_list_max_entries cannot exceed 1000")
+        if values.get("filesystem_write_max_chars", 100000) <= 0:
+            raise ValueError("filesystem_write_max_chars must be positive")
+        if values.get("filesystem_write_max_chars", 100000) > 10000000:
+            raise ValueError("filesystem_write_max_chars cannot exceed 10000000")
+        if values.get("filesystem_relative_path_max_length", 512) <= 0:
+            raise ValueError("filesystem_relative_path_max_length must be positive")
+        if values.get("filesystem_relative_path_max_length", 512) > 4096:
+            raise ValueError("filesystem_relative_path_max_length cannot exceed 4096")
 
     from pydantic import model_validator
     @model_validator(mode="after")

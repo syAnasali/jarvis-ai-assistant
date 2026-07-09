@@ -68,13 +68,21 @@ class ToolExecutor:
                             metadata={"permission_level": tool.permission_level.value}
                         )
                     
+                    metadata = {}
+                    if hasattr(tool, "get_approval_metadata"):
+                        try:
+                            metadata = tool.get_approval_metadata(arguments)
+                        except Exception as e:
+                            logger.error(f"Failed to generate approval metadata: {e}")
+
                     from app.approval.policy import generate_approval_reason
                     reason = generate_approval_reason(tool)
                     action = self._approval_manager.create_pending_action(
                         tool_name=name,
                         arguments=arguments,
                         permission_level=tool.permission_level,
-                        reason=reason
+                        reason=reason,
+                        metadata=metadata
                     )
                     logger.warning(f"Tool execution suspended: '{name}' requires confirmation. PendingAction ID: {action.action_id}")
                     return ToolResult(

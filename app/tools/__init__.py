@@ -8,7 +8,14 @@ from app.tools.builtin.system import CurrentTimeTool, SystemInfoTool
 from app.tools.builtin.disk import GetDiskUsageTool
 from app.tools.builtin.process import ListRunningProcessesTool, FindRunningProcessTool
 from app.tools.builtin.applications import ListInstalledApplicationsTool, FindInstalledApplicationTool
-from app.tools.builtin.filesystem import ListDirectoryTool, ReadTextFileTool
+from app.tools.builtin.filesystem import (
+    InspectPathTool,
+    ListDirectoryTool,
+    CreateDirectoryTool,
+    WriteTextFileTool,
+    MovePathTool,
+    DeletePathTool,
+)
 
 __all__ = [
     "BaseTool",
@@ -23,6 +30,10 @@ __all__ = [
     "FindRunningProcessTool",
     "ListInstalledApplicationsTool",
     "FindInstalledApplicationTool",
+    "InspectPathTool",
     "ListDirectoryTool",
-    "ReadTextFileTool",
+    "CreateDirectoryTool",
+    "WriteTextFileTool",
+    "MovePathTool",
+    "DeletePathTool",
 ]

@@ -250,7 +250,28 @@ class Application:
             ResolveApplicationTool,
             LaunchApplicationTool
         )
-        from app.tools.builtin.filesystem import ListDirectoryTool, ReadTextFileTool
+        from app.tools.builtin.filesystem import (
+            InspectPathTool,
+            ListDirectoryTool,
+            CreateDirectoryTool,
+            WriteTextFileTool,
+            MovePathTool,
+            DeletePathTool,
+        )
+        from app.services.filesystem.policy import FilesystemPolicy
+        from app.services.filesystem.resolver import FilesystemResolver
+        from app.services.filesystem.service import FilesystemService
+
+        policy = FilesystemPolicy()
+        resolver = FilesystemResolver(policy)
+        filesystem_service = FilesystemService(
+            policy=policy,
+            resolver=resolver,
+            list_max_entries=settings.filesystem_list_max_entries,
+            write_max_chars=settings.filesystem_write_max_chars,
+            relative_path_max_length=settings.filesystem_relative_path_max_length
+        )
+        self.container.register("filesystem_service", filesystem_service)
 
         registry = ToolRegistry()
         registry.register(CurrentTimeTool())
@@ -262,8 +283,14 @@ class Application:
         registry.register(FindInstalledApplicationTool())
         registry.register(ResolveApplicationTool())
         registry.register(LaunchApplicationTool())
-        registry.register(ListDirectoryTool())
-        registry.register(ReadTextFileTool())
+        
+        # Register new filesystem tools
+        registry.register(InspectPathTool(filesystem_service))
+        registry.register(ListDirectoryTool(filesystem_service))
+        registry.register(CreateDirectoryTool(filesystem_service))
+        registry.register(WriteTextFileTool(filesystem_service))
+        registry.register(MovePathTool(filesystem_service))
+        registry.register(DeletePathTool(filesystem_service))
 
         # 3. Create ToolExecutor with approval manager
         executor = ToolExecutor(registry, approval_manager)
@@ -382,7 +409,7 @@ class Application:
                             action = approval_manager.get(action_id)
                             if action:
                                 from app.approval.cli import prompt_user_approval
-                                approved = prompt_user_approval(tool_name, reason, action.arguments)
+                                approved = prompt_user_approval(tool_name, reason, action.arguments, action.metadata)
                                 if approved:
                                     approval_manager.approve(action_id)
                                     active_approval_id = action_id

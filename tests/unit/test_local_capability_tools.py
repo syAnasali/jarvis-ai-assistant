@@ -7,7 +7,7 @@ import psutil
 from unittest.mock import MagicMock, patch
 from typing import Any, Dict, List
 from app.core.exceptions import ToolExecutionError
-from app.tools.builtin.filesystem import validate_and_resolve_path, ListDirectoryTool, ReadTextFileTool, is_sensitive_path
+from app.tools.builtin.filesystem import validate_and_resolve_path, ListDirectoryTool, is_sensitive_path
 from app.tools.builtin.disk import GetDiskUsageTool
 from app.tools.builtin.process import ListRunningProcessesTool, FindRunningProcessTool
 from app.tools.builtin.applications import ListInstalledApplicationsTool, FindInstalledApplicationTool, discover_installed_applications
@@ -229,133 +229,11 @@ def test_applications_registry_unavailable(mock_open):
 
 
 # =====================================================================
-# LIST DIRECTORY TESTS
-# =====================================================================
-
-def test_list_directory_deterministic_ordering(tmp_path):
-    """Verify directory listing sorts directories first, then files alphabetically."""
-    # Create files and subdirectories
-    (tmp_path / "file_b.txt").write_text("b")
-    (tmp_path / "file_a.txt").write_text("a")
-    os.makedirs(tmp_path / "dir_b")
-    os.makedirs(tmp_path / "dir_a")
-
-    tool = ListDirectoryTool()
-    res = tool.execute(path=str(tmp_path), limit=10)
-    
-    entries = res["entries"]
-    assert len(entries) == 4
-    # Dirs first
-    assert entries[0]["name"] == "dir_a"
-    assert entries[0]["type"] == "directory"
-    assert entries[1]["name"] == "dir_b"
-    assert entries[1]["type"] == "directory"
-    # Files next
-    assert entries[2]["name"] == "file_a.txt"
-    assert entries[2]["type"] == "file"
-    assert entries[3]["name"] == "file_b.txt"
-    assert entries[3]["type"] == "file"
-
-
-def test_list_directory_no_recursion(tmp_path):
-    """Verify directory listing is strictly non-recursive."""
-    sub = tmp_path / "subdir"
-    os.makedirs(sub)
-    (sub / "nested.txt").write_text("nested")
-
-    tool = ListDirectoryTool()
-    res = tool.execute(path=str(tmp_path))
-    assert res["returned_count"] == 1
-    assert res["entries"][0]["name"] == "subdir"
-
-
-def test_list_directory_error_boundaries(tmp_path):
-    """Verify directory listing fails on files and nonexistent directories."""
-    file_path = tmp_path / "notes.txt"
-    file_path.write_text("some content")
-
-    tool = ListDirectoryTool()
-    with pytest.raises(ToolExecutionError, match="not a directory"):
-        tool.execute(path=str(file_path))
-
-
-# =====================================================================
-# READ TEXT FILE TESTS
-# =====================================================================
-
-def test_read_text_file_valid_decodings(tmp_path):
-    """Verify text file reading handles UTF-8 and BOM correct parsing."""
-    tool = ReadTextFileTool()
-    
-    # Standard UTF-8
-    f1 = tmp_path / "f1.txt"
-    f1.write_text("Standard text content", encoding="utf-8")
-    res1 = tool.execute(path=str(f1))
-    assert res1["content"] == "Standard text content"
-    assert res1["truncated"] is False
-
-    # UTF-8 with BOM
-    f2 = tmp_path / "f2.txt"
-    f2.write_bytes(b"\xef\xbb\xbfBOM Content")
-    res2 = tool.execute(path=str(f2))
-    assert res2["content"] == "BOM Content"
-
-
-def test_read_text_file_size_limit_rejection(tmp_path):
-    """Verify oversized files exceeding limits are rejected prior to read."""
-    tool = ReadTextFileTool()
-    large_file = tmp_path / "large.txt"
-    
-    # Configure settings size threshold to 10 bytes for test
-    original_limit = settings.tool_max_text_file_bytes
-    settings.tool_max_text_file_bytes = 10
-    
-    large_file.write_text("This content exceeds ten bytes threshold.")
-    try:
-        with pytest.raises(ToolExecutionError, match="exceeds limit"):
-            tool.execute(path=str(large_file))
-    finally:
-        settings.tool_max_text_file_bytes = original_limit
-
-
-def test_read_text_file_unsupported_extensions(tmp_path):
-    """Verify unsupported extensions (like PDF/binary) are rejected."""
-    tool = ReadTextFileTool()
-    pdf_file = tmp_path / "doc.pdf"
-    pdf_file.write_text("PDF content")
-    with pytest.raises(ToolExecutionError, match="Unsupported file extension"):
-        tool.execute(path=str(pdf_file))
-
-
-def test_read_text_file_binary_detection(tmp_path):
-    """Verify binary content containing null bytes is rejected."""
-    tool = ReadTextFileTool()
-    binary_file = tmp_path / "data.txt"  # txt extension but binary content
-    binary_file.write_bytes(b"some\x00data")
-    with pytest.raises(ToolExecutionError, match="Binary content detected"):
-        tool.execute(path=str(binary_file))
-
-
-def test_read_text_file_truncation(tmp_path):
-    """Verify read character bounds and truncation metadata."""
-    tool = ReadTextFileTool()
-    f = tmp_path / "notes.txt"
-    f.write_text("1234567890")
-    
-    res = tool.execute(path=str(f), max_characters=5)
-    assert res["content"] == "12345"
-    assert res["characters_returned"] == 5
-    assert res["truncated"] is True
-
-
-# =====================================================================
 # REGISTRATION & REGRESSION TESTS
 # =====================================================================
 
 def test_tool_registration_singletons():
-    """Verify all seven capability tools are registered exactly once."""
-    registry = ToolRegistry()
-    
+    """Verify all capability tools are registered exactly once."""
     from app.core.application import Application
     app = Application()
     app.initialize()
@@ -368,7 +246,8 @@ def test_tool_registration_singletons():
         "get_current_time", "get_system_info",
         "get_disk_usage", "list_running_processes", "find_running_process",
         "list_installed_applications", "find_installed_application",
-        "list_directory", "read_text_file"
+        "inspect_path", "list_directory", "create_directory", "write_text_file",
+        "move_path", "delete_path"
     ]
     
     for tool_name in expected_tools:

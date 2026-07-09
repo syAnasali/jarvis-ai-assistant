@@ -1,13 +1,11 @@
-"""Built-in filesystem tools and safety validation helpers."""
-
 import os
 import fnmatch
 from pathlib import Path
-from typing import Any, Dict, List
+from typing import Any, Dict, Optional
 from app.tools.base import BaseTool
 from app.tools.models import ToolPermission
-from app.core.exceptions import ToolExecutionError
-from app.config.settings import settings
+from app.core.exceptions import ToolExecutionError, FilesystemError
+from app.services.filesystem.service import FilesystemService
 
 # Sensitive filename denylist patterns
 SENSITIVE_FILENAME_PATTERNS = [
@@ -74,8 +72,78 @@ def validate_and_resolve_path(path_str: str, expected_type: str | None = None) -
     return resolved
 
 
+
+class InspectPathTool(BaseTool):
+    """Tool to inspect metadata of a filesystem target path."""
+
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the InspectPathTool with an optional FilesystemService."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
+
+    @property
+    def name(self) -> str:
+        return "inspect_path"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Inspect the metadata of a path under a logical root. Returns model-safe information "
+            "such as existence, type (FILE or DIRECTORY), size in bytes, and last modified timestamp."
+        )
+
+    @property
+    def permission_level(self) -> ToolPermission:
+        return ToolPermission.SAFE
+
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "root": {
+                        "type": "string",
+                        "description": "The trusted logical root directory (e.g., 'desktop', 'documents', 'downloads', 'workspace')."
+                    },
+                    "relative_path": {
+                        "type": "string",
+                        "description": "The relative path to inspect within the logical root."
+                    }
+                },
+                "required": ["root", "relative_path"]
+            }
+        }
+
+    def execute(self, **kwargs: Any) -> Dict[str, Any]:
+        root = kwargs.get("root")
+        relative_path = kwargs.get("relative_path")
+        
+        try:
+            target = self._service.inspect_path(root, relative_path)
+            return target.metadata
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
+        except Exception as e:
+            raise ToolExecutionError(f"Inspection failed: {e}")
+
+
 class ListDirectoryTool(BaseTool):
     """Tool to list contents of a directory without recursion."""
+
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the ListDirectoryTool."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
 
     @property
     def name(self) -> str:
@@ -84,8 +152,8 @@ class ListDirectoryTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "List the contents of a directory (directories first, then files, sorted alphabetically) "
-            "without recursing. Only provides basic metadata like name, type, and size."
+            "List the contents of a directory under a logical root (directories first, then files, "
+            "sorted alphabetically) without recursing. Returns name, type, and size."
         )
 
     @property
@@ -99,94 +167,62 @@ class ListDirectoryTool(BaseTool):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {
+                    "root": {
                         "type": "string",
-                        "description": "The directory path to list entries for."
+                        "description": "The trusted logical root directory (e.g., 'desktop', 'documents', 'downloads', 'workspace')."
+                    },
+                    "relative_path": {
+                        "type": "string",
+                        "description": "Optional relative subdirectory path inside the logical root to list. Defaults to the root directory itself."
                     },
                     "limit": {
                         "type": "integer",
-                        "description": f"Optional maximum number of entries to return. Default {settings.tool_default_list_limit}, maximum {settings.tool_max_list_limit}."
+                        "description": "Optional maximum number of entries to return."
                     }
                 },
-                "required": ["path"]
+                "required": ["root"]
             }
         }
 
     def execute(self, **kwargs: Any) -> Dict[str, Any]:
-        path = kwargs.get("path")
-        resolved = validate_and_resolve_path(path, expected_type="directory")
-
+        root = kwargs.get("root")
+        relative_path = kwargs.get("relative_path")
         limit = kwargs.get("limit")
-        if limit is None:
-            limit = settings.tool_default_list_limit
-        else:
-            if limit <= 0 or limit > settings.tool_max_list_limit:
-                raise ToolExecutionError(f"Limit must be between 1 and {settings.tool_max_list_limit}.")
 
         try:
-            raw_entries = os.listdir(resolved)
-        except PermissionError:
-            raise ToolExecutionError(f"Permission denied: {path}")
+            return self._service.list_directory(root, relative_path, limit)
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
         except Exception as e:
-            raise ToolExecutionError(f"Failed to list directory: {e}")
-
-        total_count = len(raw_entries)
-        dirs = []
-        files = []
-
-        for name in raw_entries:
-            entry_path = os.path.join(resolved, name)
-            try:
-                if os.path.isdir(entry_path):
-                    dirs.append(name)
-                elif os.path.isfile(entry_path):
-                    files.append(name)
-            except Exception:
-                pass
-
-        dirs.sort(key=str.lower)
-        files.sort(key=str.lower)
-
-        sorted_entries = []
-        for d in dirs:
-            sorted_entries.append({"name": d, "type": "directory", "size_bytes": None})
-        for f in files:
-            size = None
-            try:
-                size = os.path.getsize(os.path.join(resolved, f))
-            except Exception:
-                pass
-            sorted_entries.append({"name": f, "type": "file", "size_bytes": size})
-
-        truncated = len(sorted_entries) > limit
-        final_entries = sorted_entries[:limit]
-
-        return {
-            "path": resolved,
-            "entries": final_entries,
-            "returned_count": len(final_entries),
-            "total_count": total_count,
-            "truncated": truncated
-        }
+            raise ToolExecutionError(f"List directory failed: {e}")
 
 
-class ReadTextFileTool(BaseTool):
-    """Tool to safely read character-bounded content from regular text files."""
+class CreateDirectoryTool(BaseTool):
+    """Tool to create a directory under a logical root."""
+
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the CreateDirectoryTool."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
 
     @property
     def name(self) -> str:
-        return "read_text_file"
+        return "create_directory"
 
     @property
     def description(self) -> str:
         return (
-            "Read content from a user-requested local text file. Automatically rejects binary files, "
-            "unsupported extensions, files larger than 2MB, and credential/private key files."
+            "Create a directory under a logical root. Supports creating parent directories. "
+            "Requires explicit human confirmation before execution."
         )
 
     @property
     def permission_level(self) -> ToolPermission:
-        return ToolPermission.SAFE
+        return ToolPermission.CONFIRMATION
 
     def get_schema(self) -> Dict[str, Any]:
         return {
@@ -195,74 +231,251 @@ class ReadTextFileTool(BaseTool):
             "parameters": {
                 "type": "object",
                 "properties": {
-                    "path": {
+                    "root": {
                         "type": "string",
-                        "description": "The path to the text file to read."
+                        "description": "The trusted logical root directory (e.g., 'desktop', 'documents', 'downloads', 'workspace')."
                     },
-                    "max_characters": {
-                        "type": "integer",
-                        "description": f"Optional character limit to return. Default {settings.tool_default_text_characters}, maximum {settings.tool_max_text_characters}."
+                    "relative_path": {
+                        "type": "string",
+                        "description": "The relative directory path to create."
                     }
                 },
-                "required": ["path"]
+                "required": ["root", "relative_path"]
             }
         }
 
     def execute(self, **kwargs: Any) -> Dict[str, Any]:
-        path = kwargs.get("path")
-        resolved = validate_and_resolve_path(path, expected_type="file")
-
-        # Centralized extension check
-        ext = os.path.splitext(resolved)[1].lower()
-        allowed_extensions = {
-            ".txt", ".md", ".json", ".yaml", ".yml", ".toml", ".ini", ".cfg",
-            ".csv", ".log", ".py", ".js", ".jsx", ".ts", ".tsx", ".html", ".css"
-        }
-        if ext not in allowed_extensions:
-            raise ToolExecutionError(f"Unsupported file extension: {ext}. Only common text extensions are allowed.")
+        root = kwargs.get("root")
+        relative_path = kwargs.get("relative_path")
 
         try:
-            file_size = os.path.getsize(resolved)
+            success = self._service.create_directory(root, relative_path)
+            return {"success": success, "message": f"Directory created successfully under '{root}': {relative_path}"}
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
         except Exception as e:
-            raise ToolExecutionError(f"Failed to get file size: {e}")
+            raise ToolExecutionError(f"Directory creation failed: {e}")
 
-        if file_size > settings.tool_max_text_file_bytes:
-            raise ToolExecutionError(f"File size ({file_size} bytes) exceeds limit of {settings.tool_max_text_file_bytes} bytes.")
 
-        max_chars = kwargs.get("max_characters")
-        if max_chars is None:
-            max_chars = settings.tool_default_text_characters
-        else:
-            if max_chars <= 0 or max_chars > settings.tool_max_text_characters:
-                raise ToolExecutionError(f"max_characters must be between 1 and {settings.tool_max_text_characters}.")
+class WriteTextFileTool(BaseTool):
+    """Tool to write a UTF-8 encoded text file under a logical root."""
 
-        try:
-            with open(resolved, "rb") as f:
-                raw_bytes = f.read()
-        except PermissionError:
-            raise ToolExecutionError(f"Permission denied: {path}")
-        except Exception as e:
-            raise ToolExecutionError(f"Failed to read file: {e}")
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the WriteTextFileTool."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
 
-        if b"\x00" in raw_bytes:
-            raise ToolExecutionError("Binary content detected. Only text files are supported.")
+    @property
+    def name(self) -> str:
+        return "write_text_file"
 
-        # Safe text decoding strategy
-        try:
-            content = raw_bytes.decode("utf-8-sig")
-        except UnicodeDecodeError:
-            try:
-                content = raw_bytes.decode("utf-8")
-            except UnicodeDecodeError:
-                content = raw_bytes.decode("utf-8", errors="replace")
+    @property
+    def description(self) -> str:
+        return (
+            "Write character content to a text file under a logical root using UTF-8 encoding. "
+            "Strictly rejects executable extensions and non-text indicators. "
+            "Requires explicit human confirmation before execution."
+        )
 
-        truncated = len(content) > max_chars
-        final_content = content[:max_chars]
+    @property
+    def permission_level(self) -> ToolPermission:
+        return ToolPermission.CONFIRMATION
 
+    def get_schema(self) -> Dict[str, Any]:
         return {
-            "path": resolved,
-            "content": final_content,
-            "characters_returned": len(final_content),
-            "truncated": truncated,
-            "file_size_bytes": file_size
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "root": {
+                        "type": "string",
+                        "description": "The trusted logical root directory (e.g., 'desktop', 'documents', 'downloads', 'workspace')."
+                    },
+                    "relative_path": {
+                        "type": "string",
+                        "description": "The relative path of the file to write."
+                    },
+                    "content": {
+                        "type": "string",
+                        "description": "The text content to write into the file."
+                    }
+                },
+                "required": ["root", "relative_path", "content"]
+            }
         }
+
+    def get_approval_metadata(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Check if target already exists to determine if it is an overwrite."""
+        root = arguments.get("root", "")
+        relative_path = arguments.get("relative_path", "")
+        try:
+            target = self._service.inspect_path(root, relative_path)
+            return {"overwrite": target.exists}
+        except Exception:
+            return {"overwrite": False}
+
+    def execute(self, **kwargs: Any) -> Dict[str, Any]:
+        root = kwargs.get("root")
+        relative_path = kwargs.get("relative_path")
+        content = kwargs.get("content")
+
+        try:
+            success = self._service.write_text_file(root, relative_path, content)
+            return {"success": success, "message": f"File written successfully under '{root}': {relative_path}"}
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
+        except Exception as e:
+            raise ToolExecutionError(f"File write failed: {e}")
+
+
+class MovePathTool(BaseTool):
+    """Tool to move files or directories under logical roots."""
+
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the MovePathTool."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
+
+    @property
+    def name(self) -> str:
+        return "move_path"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Move a file or directory from a source logical root and path to a destination logical root and path. "
+            "Fails if a destination collision occurs. "
+            "Requires explicit human confirmation before execution."
+        )
+
+    @property
+    def permission_level(self) -> ToolPermission:
+        return ToolPermission.CONFIRMATION
+
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "source_root": {
+                        "type": "string",
+                        "description": "The trusted logical root directory for the source."
+                    },
+                    "source_relative_path": {
+                        "type": "string",
+                        "description": "The relative source path to move."
+                    },
+                    "destination_root": {
+                        "type": "string",
+                        "description": "The trusted logical root directory for the destination."
+                    },
+                    "destination_relative_path": {
+                        "type": "string",
+                        "description": "The relative destination path."
+                    }
+                },
+                "required": ["source_root", "source_relative_path", "destination_root", "destination_relative_path"]
+            }
+        }
+
+    def execute(self, **kwargs: Any) -> Dict[str, Any]:
+        source_root = kwargs.get("source_root")
+        source_relative_path = kwargs.get("source_relative_path")
+        destination_root = kwargs.get("destination_root")
+        destination_relative_path = kwargs.get("destination_relative_path")
+
+        try:
+            success = self._service.move_path(
+                source_root, source_relative_path, destination_root, destination_relative_path
+            )
+            return {"success": success, "message": f"Successfully moved '{source_relative_path}' to '{destination_relative_path}'."}
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
+        except Exception as e:
+            raise ToolExecutionError(f"Move failed: {e}")
+
+
+class DeletePathTool(BaseTool):
+    """Tool to delete files or directories under a logical root."""
+
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the DeletePathTool."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
+
+    @property
+    def name(self) -> str:
+        return "delete_path"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Delete a file or directory under a logical root. Non-empty directories require recursive=true. "
+            "Requires explicit human confirmation before execution."
+        )
+
+    @property
+    def permission_level(self) -> ToolPermission:
+        return ToolPermission.CONFIRMATION
+
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "root": {
+                        "type": "string",
+                        "description": "The trusted logical root directory (e.g., 'desktop', 'documents', 'downloads', 'workspace')."
+                    },
+                    "relative_path": {
+                        "type": "string",
+                        "description": "The relative path to delete."
+                    },
+                    "recursive": {
+                        "type": "boolean",
+                        "description": "Set to true to recursively delete non-empty directories."
+                    }
+                },
+                "required": ["root", "relative_path"]
+            }
+        }
+
+    def get_approval_metadata(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
+        """Check target directory status to support clean CLI presentation."""
+        root = arguments.get("root", "")
+        relative_path = arguments.get("relative_path", "")
+        try:
+            target = self._service.inspect_path(root, relative_path)
+            return {"is_dir": target.entry_type == "DIRECTORY"}
+        except Exception:
+            return {"is_dir": False}
+
+    def execute(self, **kwargs: Any) -> Dict[str, Any]:
+        root = kwargs.get("root")
+        relative_path = kwargs.get("relative_path")
+        recursive = kwargs.get("recursive", False)
+
+        try:
+            success = self._service.delete_path(root, relative_path, recursive)
+            return {"success": success, "message": f"Successfully deleted target under '{root}': {relative_path}"}
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
+        except Exception as e:
+            raise ToolExecutionError(f"Delete failed: {e}")

@@ -116,6 +116,23 @@ class PlanParser:
             except Exception as e:
                 raise PlanningParseError(f"Failed to instantiate PlanStep for step {sequence}: {e}") from e
 
+        # Check if a SYNTHESIS step exists in the parsed steps.
+        # If not, automatically append a synthesis step at the end to ensure plan validity.
+        has_synthesis = any(step.step_type == StepType.SYNTHESIS for step in parsed_steps)
+        if not has_synthesis:
+            next_seq = max((step.sequence for step in parsed_steps), default=0) + 1
+            synthesis_step = PlanStep(
+                step_id=generate_step_id(),
+                sequence=next_seq,
+                description="Synthesize final response",
+                step_type=StepType.SYNTHESIS,
+                tool_name=None,
+                tool_arguments={},
+                status=StepStatus.PENDING,
+                metadata={}
+            )
+            parsed_steps.append(synthesis_step)
+
         try:
             return TaskPlan(
                 plan_id=generate_plan_id(),
