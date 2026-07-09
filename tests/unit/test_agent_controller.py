@@ -329,3 +329,111 @@ def test_controller_conversation_persistence_integration():
     assert conversation.get_history()[1].content == "Assistant reply"
 
 
+def test_controller_direct_vs_planned_routing():
+    """Verify that DIRECT and PLANNED requests route and persist correctly in AgentController."""
+    from app.planning.models import ExecutionMode, PlanningDecision, TaskPlan, PlanStatus, PlanExecutionResult
+    from app.planning.router import ExecutionRouter
+    from app.planning.planner import LLMTaskPlanner
+    from app.planning.validator import PlanValidator
+    from app.planning.executor import TaskExecutor
+    from app.planning.metrics import PlanningMetrics
+    from app.conversation.manager import ConversationManager
+
+    mock_llm_manager = MagicMock(spec=LLMManager)
+    mock_runner = MagicMock(spec=AgentRunner)
+    exec_metrics = AgentExecutionMetrics(100.0, 1, 1, 0)
+    mock_runner.run.return_value = AgentRunResult("Direct assistant reply", exec_metrics)
+
+    conversation = Conversation()
+    context_manager = ContextManager()
+
+    mock_router = MagicMock(spec=ExecutionRouter)
+    mock_planner = MagicMock(spec=LLMTaskPlanner)
+    mock_validator = MagicMock(spec=PlanValidator)
+    mock_executor = MagicMock(spec=TaskExecutor)
+    mock_conv_manager = MagicMock(spec=ConversationManager)
+    mock_coordinator = MagicMock(spec=MemoryWriteCoordinator)
+
+    controller = AgentController(
+        conversation=conversation,
+        context_manager=context_manager,
+        llm_manager=mock_llm_manager,
+        agent_runner=mock_runner,
+        conversation_manager=mock_conv_manager,
+        router=mock_router,
+        planner=mock_planner,
+        validator=mock_validator,
+        executor=mock_executor,
+        coordinator=mock_coordinator
+    )
+    controller.active_session_id = "session_xyz"
+
+    # --- CASE 1: DIRECT Prompt ---
+    mock_router.route.return_value = PlanningDecision(
+        mode=ExecutionMode.DIRECT,
+        confidence=0.1,
+        reason="simple"
+    )
+
+    req_direct = AgentRequest("r_dir", "What time is it?", "terminal")
+    res_direct = controller.process_request(req_direct)
+
+    assert res_direct.text == "Direct assistant reply"
+    assert res_direct.metadata["execution_mode"] == "direct"
+    # Verify planner & executor were not called
+    mock_planner.create_plan.assert_not_called()
+    mock_executor.execute.assert_not_called()
+    mock_coordinator.submit.assert_called_once_with("What time is it?")
+
+    # Reset mock call histories
+    mock_planner.reset_mock()
+    mock_executor.reset_mock()
+    mock_coordinator.reset_mock()
+    conversation.clear()
+
+    # --- CASE 2: PLANNED Prompt ---
+    mock_router.route.return_value = PlanningDecision(
+        mode=ExecutionMode.PLANNED,
+        confidence=0.9,
+        reason="complex"
+    )
+
+    fake_plan = TaskPlan("plan_1", "Goal", [], PlanStatus.CREATED, datetime.now(timezone.utc))
+    mock_planner.create_plan.return_value = fake_plan
+
+    fake_metrics = PlanningMetrics("planned", 0.9, tool_calls=2)
+    fake_result = PlanExecutionResult(
+        plan_id="plan_1",
+        success=True,
+        final_response="Synthesis final reply",
+        plan_status=PlanStatus.COMPLETED,
+        steps_total=3,
+        steps_completed=3,
+        steps_failed=0,
+        observations=[],
+        metrics=fake_metrics
+    )
+    mock_executor.execute.return_value = fake_result
+
+    req_planned = AgentRequest("r_plan", "Check system and time, then report.", "terminal")
+    res_planned = controller.process_request(req_planned)
+
+    assert res_planned.text == "Synthesis final reply"
+    assert res_planned.metadata["execution_mode"] == "planned"
+    assert res_planned.metadata["plan_id"] == "plan_1"
+    assert res_planned.metadata["plan_status"] == PlanStatus.COMPLETED.value
+    
+    # Assert planner/executor called exactly once
+    mock_planner.create_plan.assert_called_once()
+    mock_executor.execute.assert_called_once()
+    
+    # Verify user message and final synthesis response persisted exactly once
+    assert len(conversation.get_history()) == 2
+    assert conversation.get_history()[0].content == "Check system and time, then report."
+    assert conversation.get_history()[1].content == "Synthesis final reply"
+
+    # Verify coordinator receives original user text
+    mock_coordinator.submit.assert_called_once_with("Check system and time, then report.")
+
+
+

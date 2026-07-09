@@ -249,6 +249,22 @@ class Application:
         self.container.register("tool_executor", executor)
         self.container.register("agent_runner", agent_runner)
 
+        # 6.5. Initialize Planning components
+        from app.planning.router import ExecutionRouter
+        from app.planning.planner import LLMTaskPlanner
+        from app.planning.validator import PlanValidator
+        from app.planning.executor import TaskExecutor
+
+        planning_router = ExecutionRouter()
+        planning_planner = LLMTaskPlanner(llm_manager)
+        planning_validator = PlanValidator(registry)
+        task_executor = TaskExecutor(llm_manager, registry, executor, planning_validator)
+
+        self.container.register("planning_router", planning_router)
+        self.container.register("planning_planner", planning_planner)
+        self.container.register("planning_validator", planning_validator)
+        self.container.register("planning_executor", task_executor)
+
         # 7. Initialize Controller with AgentRunner and Memory components
         conversation = Conversation()
         context_manager = ContextManager()
@@ -261,7 +277,11 @@ class Application:
             context_builder=context_builder,
             coordinator=coordinator,
             conversation_manager=conversation_manager,
-            context_policy=context_policy
+            context_policy=context_policy,
+            router=planning_router,
+            planner=planning_planner,
+            validator=planning_validator,
+            executor=task_executor
         )
         controller.active_session_id = active_session.session_id
         self.container.register("controller", controller)

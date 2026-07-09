@@ -46,3 +46,21 @@ def generate_session_id() -> str:
         str: Generated session identifier.
     """
     return f"session_{uuid.uuid4().hex[:8]}"
+
+
+def generate_plan_id() -> str:
+    """Generates a unique plan identifier.
+
+    Returns:
+        str: Generated plan identifier.
+    """
+    return f"plan_{uuid.uuid4().hex[:8]}"
+
+
+def generate_step_id() -> str:
+    """Generates a unique plan step identifier.
+
+    Returns:
+        str: Generated step identifier.
+    """
+    return f"step_{uuid.uuid4().hex[:8]}"

@@ -14,6 +14,7 @@ class GenerationProfile(Enum):
     REASONING = "reasoning"
     MEMORY_EXTRACTION = "memory_extraction"
     MEMORY_RESOLUTION = "memory_resolution"
+    PLANNING = "planning"
 
 
 @dataclass(frozen=True)

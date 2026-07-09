@@ -34,6 +34,9 @@ class Settings(BaseSettings):
     hotkey: str = "ctrl+alt+j"
     conversation_context_max_messages: int = 24
     conversation_context_max_characters: int = 24000
+    planning_enabled: bool = True
+    planning_max_steps: int = 8
+    planning_max_observation_characters: int = 16000
 
 
 # Singleton instance

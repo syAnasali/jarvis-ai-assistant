@@ -21,8 +21,38 @@ from app.conversation.policy import ContextWindowPolicy
 from app.memory.interfaces import MemoryRetriever
 from app.memory.context import MemoryContextBuilder
 from app.memory.coordinator import MemoryWriteCoordinator
+from app.config.settings import settings
+
+from app.planning.models import ExecutionMode
+from app.planning.interfaces import TaskPlanner
+from app.planning.router import ExecutionRouter
+from app.planning.validator import PlanValidator
+from app.planning.executor import TaskExecutor
 
 logger = JarvisLogger.get_logger("agent_controller")
+
+
+def sanitize_for_json(obj: Any) -> Any:
+    """Recursively converts non-serializable objects to JSON-serializable primitives."""
+    if isinstance(obj, dict):
+        return {str(k): sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, (tuple, set)):
+        return [sanitize_for_json(v) for v in obj]
+    elif isinstance(obj, (str, int, float, bool)) or obj is None:
+        return obj
+    elif hasattr(obj, "__dict__"):
+        return sanitize_for_json(obj.__dict__)
+    else:
+        try:
+            # Check if it has a dataclass asdict method or similar representation
+            from dataclasses import is_dataclass, asdict
+            if is_dataclass(obj):
+                return sanitize_for_json(asdict(obj))
+        except Exception:
+            pass
+        return str(obj)
 
 
 class AgentController:
@@ -38,7 +68,11 @@ class AgentController:
         context_builder: MemoryContextBuilder | None = None,
         coordinator: MemoryWriteCoordinator | None = None,
         conversation_manager: ConversationManager | None = None,
-        context_policy: ContextWindowPolicy | None = None
+        context_policy: ContextWindowPolicy | None = None,
+        router: ExecutionRouter | None = None,
+        planner: TaskPlanner | None = None,
+        validator: PlanValidator | None = None,
+        executor: TaskExecutor | None = None
     ) -> None:
         """Initializes the AgentController.
 
@@ -52,6 +86,10 @@ class AgentController:
             coordinator: Optional MemoryWriteCoordinator implementation.
             conversation_manager: Optional ConversationManager implementation.
             context_policy: Optional ContextWindowPolicy implementation.
+            router: Optional ExecutionRouter implementation.
+            planner: Optional TaskPlanner implementation.
+            validator: Optional PlanValidator implementation.
+            executor: Optional TaskExecutor implementation.
         """
         self.conversation = conversation
         self.context_manager = context_manager
@@ -68,6 +106,21 @@ class AgentController:
         self.context_policy = context_policy
         self.active_session_id: str | None = None
 
+        # Setup planning components
+        from app.planning.router import ExecutionRouter
+        from app.planning.planner import LLMTaskPlanner
+        from app.planning.validator import PlanValidator
+        from app.planning.executor import TaskExecutor
+
+        self._router = router or ExecutionRouter()
+        self._task_planner = planner or LLMTaskPlanner(llm_manager)
+
+        reg = getattr(agent_runner, "_registry", None)
+        tool_exec = getattr(agent_runner, "_executor", None)
+
+        self._plan_validator = validator or PlanValidator(reg)
+        self._task_executor = executor or TaskExecutor(llm_manager, reg, tool_exec, self._plan_validator)
+
     def process_request(self, request: AgentRequest) -> AgentResponse:
         """Processes an incoming user request using the active context.
 
@@ -83,10 +136,10 @@ class AgentController:
         try:
             plan, formatted_messages = self._prepare_request(request)
 
-            if plan.use_tools or plan.use_memory:
-                raise NotImplementedError("Tool and Memory execution paths are not yet supported directly.")
+            # Heuristic Routing decision
+            decision = self._router.route(request)
 
-            # Memory retrieval logic
+            # Memory retrieval logic (runs for both direct and planned paths)
             memory_matches_ids = ()
             memory_duration_ms = 0.0
             memory_context = ""
@@ -111,29 +164,100 @@ class AgentController:
                     raise
 
             exec_metrics = None
-            if plan.use_llm and self._runner is not None:
-                logger.info("Executing via AgentRunner action loop...")
-                run_result = self._runner.run(request, formatted_messages, memory_context=memory_context)
-                
-                # Merge the memory retrieval diagnostics into execution metrics
-                from dataclasses import replace
-                exec_metrics = replace(
-                    run_result.execution_metrics,
-                    memory_matches=memory_matches_ids,
-                    memory_retrieval_duration_ms=memory_duration_ms
+            is_planned = settings.planning_enabled and decision.mode == ExecutionMode.PLANNED
+
+            if is_planned:
+                logger.info(f"Routing to PLANNED path: confidence={decision.confidence:.2f}")
+
+                available_tools = []
+                if self._runner is not None:
+                    reg = getattr(self._runner, "_registry", None)
+                    if reg is not None:
+                        available_tools = reg.get_schemas()
+
+                # Exclude the current user message (last message) from the history block passed to the planner
+                history_for_planner = formatted_messages[:-1] if formatted_messages else []
+
+                # Formulate Plan
+                task_plan = self._task_planner.create_plan(
+                    request=request,
+                    available_tools=available_tools,
+                    conversation_history=history_for_planner,
+                    memory_context=memory_context
                 )
-                
+
+                # Execute Plan step-by-step
+                exec_result = self._task_executor.execute(
+                    plan=task_plan,
+                    original_request_text=request.text,
+                    routing_confidence=decision.confidence
+                )
+
+                # Safe diagnostics metadata
+                metadata = {
+                    "execution_mode": "planned",
+                    "planning_confidence": decision.confidence,
+                    "plan_id": exec_result.plan_id,
+                    "plan_status": exec_result.plan_status.value,
+                    "plan_steps": exec_result.steps_total,
+                    "steps_completed": exec_result.steps_completed,
+                    "steps_failed": exec_result.steps_failed,
+                    "tool_calls": exec_result.metrics.tool_calls,
+                }
+
                 agent_response = AgentResponse(
                     response_id=generate_response_id(),
-                    text=run_result.text,
+                    text=exec_result.final_response,
                     tool_calls=[],
-                    success=True,
-                    metadata={"execution_metrics": exec_metrics}
+                    success=exec_result.success,
+                    metadata=metadata
                 )
             else:
-                logger.info("Executing via Executor...")
-                raw_response = self._executor.execute(plan, formatted_messages)
-                agent_response = self._parser.parse_response(raw_response)
+                logger.info(f"Routing to DIRECT path: confidence={decision.confidence:.2f}")
+                if plan.use_tools or plan.use_memory:
+                    raise NotImplementedError("Tool and Memory execution paths are not yet supported directly.")
+
+                # Execute via existing AgentRunner or Executor
+                if plan.use_llm and self._runner is not None:
+                    logger.info("Executing via AgentRunner action loop...")
+                    run_result = self._runner.run(request, formatted_messages, memory_context=memory_context)
+                    
+                    # Merge the memory retrieval diagnostics into execution metrics
+                    from dataclasses import replace, asdict
+                    exec_metrics = replace(
+                        run_result.execution_metrics,
+                        memory_matches=memory_matches_ids,
+                        memory_retrieval_duration_ms=memory_duration_ms
+                    )
+                    
+                    response_metadata = {
+                        "execution_mode": "direct",
+                        "execution_metrics": asdict(exec_metrics)
+                    }
+                    
+                    agent_response = AgentResponse(
+                        response_id=generate_response_id(),
+                        text=run_result.text,
+                        tool_calls=[],
+                        success=True,
+                        metadata=response_metadata
+                    )
+                else:
+                    logger.info("Executing via Executor...")
+                    # Fallback to direct executor
+                    raw_response = self._executor.execute(plan, formatted_messages)
+                    agent_response = self._parser.parse_response(raw_response)
+                    
+                    # Merge metadata
+                    new_metadata = dict(agent_response.metadata)
+                    new_metadata["execution_mode"] = "direct"
+                    agent_response = AgentResponse(
+                        response_id=agent_response.response_id,
+                        text=agent_response.text,
+                        tool_calls=agent_response.tool_calls,
+                        success=agent_response.success,
+                        metadata=new_metadata
+                    )
 
             # Create and store assistant Message
             assistant_message = Message(
@@ -141,7 +265,7 @@ class AgentController:
                 role=MessageRole.ASSISTANT,
                 content=agent_response.text,
                 timestamp=datetime.now(timezone.utc),
-                metadata=agent_response.metadata,
+                metadata=sanitize_for_json(agent_response.metadata),
             )
             if self.conversation_manager and self.active_session_id:
                 self.conversation_manager.add_message(self.active_session_id, assistant_message)
@@ -196,12 +320,11 @@ class AgentController:
 
         try:
             plan, formatted_messages = self._prepare_request(request)
-            logger.info("Execution plan created and conversation formatted.")
 
-            if plan.use_tools or plan.use_memory:
-                raise NotImplementedError("Tool and Memory execution paths are not yet supported for streaming.")
+            # Heuristic Routing decision
+            decision = self._router.route(request)
 
-            # Memory retrieval logic
+            # Memory retrieval logic (runs for both direct and planned paths)
             memory_matches_ids = ()
             memory_duration_ms = 0.0
             memory_context = ""
@@ -227,39 +350,93 @@ class AgentController:
 
             accumulator = []
             exec_metrics = None
-            if plan.use_llm and self._runner is not None:
-                logger.info("Streaming execution started via AgentRunner...")
-                stream = self._runner.run_stream(request, formatted_messages, memory_context=memory_context)
+            response_metadata = {}
+            is_planned = settings.planning_enabled and decision.mode == ExecutionMode.PLANNED
+
+            if is_planned:
+                logger.info(f"Routing to PLANNED path (stream): confidence={decision.confidence:.2f}")
+
+                available_tools = []
+                if self._runner is not None:
+                    reg = getattr(self._runner, "_registry", None)
+                    if reg is not None:
+                        available_tools = reg.get_schemas()
+
+                # Exclude the current user message (last message) from the planner context
+                history_for_planner = formatted_messages[:-1] if formatted_messages else []
+
+                # Formulate Plan
+                task_plan = self._task_planner.create_plan(
+                    request=request,
+                    available_tools=available_tools,
+                    conversation_history=history_for_planner,
+                    memory_context=memory_context
+                )
+
+                # Execute Plan step-by-step
+                exec_result = self._task_executor.execute(
+                    plan=task_plan,
+                    original_request_text=request.text,
+                    routing_confidence=decision.confidence
+                )
+
+                final_text = exec_result.final_response
+                accumulator.append(final_text)
                 
-                iterator = iter(stream)
-                while True:
-                    try:
-                        parsed_text = next(iterator)
+                exec_metrics = exec_result.metrics
+                response_metadata = {
+                    "execution_mode": "planned",
+                    "plan_id": task_plan.plan_id,
+                    "plan_goal": task_plan.goal,
+                    "plan_status": task_plan.status.value,
+                    "steps_total": len(task_plan.steps),
+                    "steps_completed": exec_result.steps_completed,
+                    "steps_failed": exec_result.steps_failed,
+                    "plan_metrics": exec_metrics
+                }
+                yield final_text
+            else:
+                logger.info(f"Routing to DIRECT path (stream): confidence={decision.confidence:.2f}")
+                if plan.use_tools or plan.use_memory:
+                    raise NotImplementedError("Tool and Memory execution paths are not yet supported for streaming.")
+
+                if plan.use_llm and self._runner is not None:
+                    logger.info("Streaming execution started via AgentRunner...")
+                    stream = self._runner.run_stream(request, formatted_messages, memory_context=memory_context)
+                    
+                    iterator = iter(stream)
+                    while True:
+                        try:
+                            parsed_text = next(iterator)
+                            if parsed_text:
+                                accumulator.append(parsed_text)
+                                yield parsed_text
+                        except StopIteration as e:
+                            from dataclasses import replace
+                            exec_metrics = replace(
+                                e.value,
+                                memory_matches=memory_matches_ids,
+                                memory_retrieval_duration_ms=memory_duration_ms
+                            )
+                            response_metadata = {
+                                "execution_mode": "direct",
+                                "execution_metrics": exec_metrics
+                            }
+                            break
+                else:
+                    logger.info("Streaming execution started via Executor...")
+                    stream = self._executor.execute_stream(plan, formatted_messages)
+                    first_chunk_received = False
+
+                    for raw_chunk in stream:
+                        if not first_chunk_received:
+                            logger.info("First text chunk received.")
+                            first_chunk_received = True
+
+                        parsed_text = self._parser.parse_stream_chunk(raw_chunk)
                         if parsed_text:
                             accumulator.append(parsed_text)
                             yield parsed_text
-                    except StopIteration as e:
-                        from dataclasses import replace
-                        exec_metrics = replace(
-                            e.value,
-                            memory_matches=memory_matches_ids,
-                            memory_retrieval_duration_ms=memory_duration_ms
-                        )
-                        break
-            else:
-                logger.info("Streaming execution started via Executor...")
-                stream = self._executor.execute_stream(plan, formatted_messages)
-                first_chunk_received = False
-
-                for raw_chunk in stream:
-                    if not first_chunk_received:
-                        logger.info("First text chunk received.")
-                        first_chunk_received = True
-
-                    parsed_text = self._parser.parse_stream_chunk(raw_chunk)
-                    if parsed_text:
-                        accumulator.append(parsed_text)
-                        yield parsed_text
 
             logger.info("Streaming execution completed.")
 
@@ -272,7 +449,7 @@ class AgentController:
                 role=MessageRole.ASSISTANT,
                 content=full_response_text,
                 timestamp=datetime.now(timezone.utc),
-                metadata={},
+                metadata=sanitize_for_json(response_metadata),
             )
             if self.conversation_manager and self.active_session_id:
                 self.conversation_manager.add_message(self.active_session_id, assistant_message)

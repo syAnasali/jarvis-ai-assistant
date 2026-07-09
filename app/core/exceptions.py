@@ -73,3 +73,27 @@ class ConversationPersistenceError(ConversationError):
 
 class SessionStateError(ConversationError):
     """Raised when an illegal session state transition or operation occurs."""
+
+
+class PlanningError(JarvisError):
+    """Base exception class for all planning subsystem errors."""
+
+
+class PlanningParseError(PlanningError):
+    """Raised when parsing or extracting planner response fails."""
+
+
+class PlanValidationError(PlanningError):
+    """Raised when plan structure or constraint validation fails."""
+
+
+class PlanExecutionError(PlanningError):
+    """Raised when unexpected internal plan execution fails."""
+
+
+class PlanLimitError(PlanningError):
+    """Raised when task plan limits (e.g. max steps) are exceeded."""
+
+
+class StepExecutionError(PlanningError):
+    """Raised when a specific plan step execution fails."""
