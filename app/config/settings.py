@@ -58,6 +58,25 @@ class Settings(BaseSettings):
     desktop_window_wait_timeout_seconds: int = 10
     desktop_window_poll_interval_ms: int = 200
 
+    voice_enabled: bool = False
+    voice_sample_rate: int = 16000
+    voice_channels: int = 1
+    voice_sample_width: int = 2
+    voice_wait_timeout_seconds: int = 10
+    voice_max_utterance_seconds: int = 30
+    voice_min_speech_seconds: float = 0.25
+    voice_end_silence_seconds: float = 0.8
+    stt_provider: str = "faster_whisper"
+    stt_model: str = "tiny"
+    stt_device: str = "auto"
+    stt_compute_type: str = "auto"
+    stt_language: str | None = None
+    tts_provider: str = "pyttsx3"
+    tts_voice: str | None = None
+    tts_rate: int | None = None
+    tts_max_chars: int = 1000
+
+
     @classmethod
     def validate_relationships(cls, values: dict) -> None:
         """Validates tool settings ranges and relationships."""
@@ -107,6 +126,24 @@ class Settings(BaseSettings):
             raise ValueError("desktop_window_wait_timeout_seconds must be positive")
         if values.get("desktop_window_poll_interval_ms", 200) <= 0:
             raise ValueError("desktop_window_poll_interval_ms must be positive")
+
+        if values.get("voice_sample_rate", 16000) <= 0:
+            raise ValueError("voice_sample_rate must be positive")
+        if values.get("voice_channels", 1) not in (1, 2):
+            raise ValueError("voice_channels must be 1 (mono) or 2 (stereo)")
+        if values.get("voice_sample_width", 2) not in (1, 2, 4):
+            raise ValueError("voice_sample_width must be 1, 2, or 4")
+        if values.get("voice_wait_timeout_seconds", 10) <= 0:
+            raise ValueError("voice_wait_timeout_seconds must be positive")
+        if values.get("voice_max_utterance_seconds", 30) <= 0:
+            raise ValueError("voice_max_utterance_seconds must be positive")
+        if values.get("voice_min_speech_seconds", 0.25) < 0:
+            raise ValueError("voice_min_speech_seconds must be non-negative")
+        if values.get("voice_end_silence_seconds", 0.8) < 0:
+            raise ValueError("voice_end_silence_seconds must be non-negative")
+        if values.get("tts_max_chars", 1000) <= 0:
+            raise ValueError("tts_max_chars must be positive")
+
 
     from pydantic import model_validator
     @model_validator(mode="after")

@@ -249,3 +249,27 @@ The desktop interaction layer implements secure, policy-controlled Windows autom
 - `press_key` (CONFIRMATION): Presses a single allowed key under the safety guard.
 - `press_hotkey` (CONFIRMATION): Executes a canonical modifier-hotkey combo under the safety guard.
 - `click_screen` (CONFIRMATION): Clicks a screen coordinate under the safety guard.
+
+---
+
+## 15. Local Voice Runtime
+
+Jarvis integrates a modular local offline voice interaction pipeline.
+
+### Component Diagram
+
+```mermaid
+graph TD
+    Mic[Microphone Input] -->|PCM data| Capture[AudioCapture]
+    Capture -->|AudioFrame| VAD[VoiceActivityDetector]
+    VAD -->|AudioSegment| STT[SpeechToTextProvider]
+    STT -->|TranscriptionResult| Agent[AgentController]
+    Agent -->|AgentResponse| TTS[TextToSpeechProvider]
+    TTS -->|pyttsx3/SAPI5| Speaker[Audio Output]
+```
+
+### Architectural Principles
+
+- **Strict Approval Barriers**: Voice commands are processed as standard requests but cannot bypass the controlled approval runtime. Spoken confirmation (e.g., saying "yes" or "ok") is not accepted for executing `CONFIRMATION` or `RESTRICTED` tools. The system transitions to the `WAITING_APPROVAL` state, plays an audio warning, and blocks execution until explicit terminal approval is granted. This protects the user from voice-based attacks (e.g. ambient voice triggers).
+- **Dynamic Fallbacks**: The `FasterWhisperSTTProvider` automatically checks for local GPU/CUDA execution. If missing runtime dependencies or DLLs are detected at transcription runtime, it logs a warning, switches parameters, reloads the Whisper model on the CPU, and retries transcription.
+- **Speech Normalization**: To prevent the speech synthesizer from speaking raw Markdown formatting markers, the `PyTTSx3TTSProvider` applies a pipeline of regular expressions to clean bullet points, heading tags, bold/italic symbols, code fences, and redundant whitespaces while preserving word-internal underscores (like `execute_action`).

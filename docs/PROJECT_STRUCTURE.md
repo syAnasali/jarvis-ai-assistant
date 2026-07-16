@@ -68,8 +68,16 @@ jarvis-ai-assistant/
 │   │   ├── __init__.py
 │   │   ├── banner.py                 # Console banner text renderer
 │   │   └── id_generator.py           # Centralized message/request ID generator
-│   └── voice/                        # Voice processing routines (reserved)
-│       └── __init__.py               # Reserved for future implementation
+│   └── voice/                        # Local voice interaction pipeline package
+│       ├── __init__.py               # Package init and exports
+│       ├── capture.py                # sounddevice microphone capture backend
+│       ├── interfaces.py             # Voice abstractions and interfaces
+│       ├── manager.py                # Voice manager subsystem coordinator
+│       ├── models.py                 # Timezone-aware audio and transcription models
+│       ├── runtime.py                # Push-to-talk loop state machine runtime
+│       ├── stt.py                    # faster-whisper STT provider with CPU fallback
+│       ├── tts.py                    # pyttsx3 local TTS with formatting normalization
+│       └── vad.py                    # numpy RMS energy-based VAD
 ├── assets/                           # Static UI media resources (empty)
 ├── data/                             # Created application data folder (empty)
 ├── docs/                             # System design specifications
@@ -162,6 +170,17 @@ Manages local executable system tools with permission levels.
 - **`builtin/filesystem.py`**: Safe non-recursive list directory and bounded text file reading tools.
 - **`builtin/desktop.py`**: Policy-controlled desktop active/visible window, focus, type text, press key, press hotkey, and click screen tools.
 
+### `app/voice/`
+Implements the local offline voice interaction pipeline.
+- **`models.py`**: Timezone-aware audio and transcription/synthesis result models.
+- **`interfaces.py`**: AudioCapture, VoiceActivityDetector, SpeechToTextProvider, TextToSpeechProvider.
+- **`capture.py`**: sounddevice and PortAudio-based microphone capture.
+- **`vad.py`**: Deterministic RMS energy-based voice activity detector.
+- **`stt.py`**: faster-whisper speech-to-text provider with dynamic CPU fallback.
+- **`tts.py`**: pyttsx3/SAPI5 offline speech synthesis with text formatting normalization.
+- **`manager.py`**: Subsystem coordinator and metrics tracker.
+- **`runtime.py`**: Push-to-talk state machine and AgentController adapter loop.
+
 ### `app/utils/`
 Provides shared utilities.
 - **`id_generator.py`**: Centralizes unique ID generation for messages, requests, responses, and memories.
@@ -171,7 +190,6 @@ Provides shared utilities.
 The following directories are empty placeholder packages (except for `__init__.py`) reserved for future phases of the project roadmap:
 - **`app/prompts/`**: Externalized prompt files.
 - **`app/ui/`**: Desktop GUI views and window widgets (PySide6).
-- **`app/voice/`**: Audio capture, VAD, Whisper STT, and Kokoro TTS modules.
 
 ---
 
@@ -195,4 +213,11 @@ The following directories are empty placeholder packages (except for `__init__.p
   - **`test_desktop_approval.py`**: Verify typing tool call confirmation suspense, database insertion, and active focus safety guard.
   - **`test_agent_desktop.py`**: E2E direct request to type text verifying prompt parsing, suspension, approval, and execution.
   - **`test_planned_desktop.py`**: E2E planned request (focus window then type text) verifying planner output, step-by-step executions, double approval suspenses, and final synthesis.
-- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, local capability tools, filesystem policy/resolver/service, and desktop interaction subsystem (`test_desktop_service.py`).
+  - **`test_voice_models.py`**: Verify model validation and state transitions.
+  - **`test_voice_pipeline_fake.py`**: Dry-run of voice pipeline using fake capture, VAD, STT, and TTS.
+  - **`test_microphone_capture.py`**: Capture raw audio and verify VAD boundaries from default microphone.
+  - **`test_local_stt.py`**: Transcribe an in-memory segment locally using faster-whisper.
+  - **`test_local_tts.py`**: Speak text locally using pyttsx3.
+  - **`test_voice_runtime.py`**: E2E voice runtime request processing and speech synthesis.
+  - **`test_voice_approval_safety.py`**: Verify that voice-origin requests trigger WAITING_APPROVAL block and cannot auto-approve.
+- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, local capability tools, filesystem policy/resolver/service, desktop interaction subsystem (`test_desktop_service.py`), and the voice subsystem (`test_voice_models.py`, `test_voice_state.py`, `test_voice_capture.py`, `test_voice_vad.py`, `test_voice_stt.py`, `test_voice_tts.py`, `test_voice_manager.py`, `test_voice_runtime.py`).

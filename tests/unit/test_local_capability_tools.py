@@ -235,10 +235,15 @@ def test_applications_registry_unavailable(mock_open):
 def test_tool_registration_singletons():
     """Verify all capability tools are registered exactly once."""
     from app.core.application import Application
+    from unittest.mock import patch
+    from app.ai.providers.ollama import OllamaProvider
+
     app = Application()
     app.initialize()
-    app._initialize_llm()
-    app._initialize_agent()
+    
+    with patch.object(OllamaProvider, "initialize", lambda self: None):
+        app._initialize_llm()
+        app._initialize_agent()
     
     reg = app.container.get("tool_registry")
     

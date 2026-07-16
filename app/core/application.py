@@ -75,7 +75,12 @@ class Application:
             active_session = self.container.get("conversation_active_session")
             print(f"Session: {active_session.session_id}")
             print()
-            self._run_chat_loop()
+
+            import sys
+            if "--voice" in sys.argv:
+                self._run_voice_loop()
+            else:
+                self._run_chat_loop()
         except Exception as e:
             self.state = ApplicationState.ERROR
             self.logger.critical(f"Application crash during main loop: {e}")
@@ -469,6 +474,14 @@ class Application:
 
     def _shutdown_services(self) -> None:
         """Shuts down all active registered background connections."""
+        # 0. Shutdown voice runtime if active
+        try:
+            if self.container.has("voice_runtime"):
+                voice_runtime = self.container.get("voice_runtime")
+                voice_runtime.stop()
+        except Exception as e:
+            self.logger.error(f"Error shutting down voice runtime: {e}")
+
         # 1. Shutdown memory coordinator first (flushes pending jobs)
         try:
             if self.container.has("memory_coordinator"):
@@ -494,3 +507,82 @@ class Application:
                     active.shutdown()
         except Exception as e:
             self.logger.error(f"Error shutting down LLM provider: {e}")
+
+    def _run_voice_loop(self) -> None:
+        """Runs the interactive voice push-to-talk CLI loop."""
+        from app.utils.banner import render_shutdown_banner
+        from app.voice.capture import SoundDeviceAudioCapture
+        from app.voice.vad import EnergyBasedVAD
+        from app.voice.stt import FasterWhisperSTTProvider
+        from app.voice.tts import PyTTSx3TTSProvider
+        from app.voice.manager import VoiceManager
+        from app.voice.runtime import VoiceRuntime
+        from app.config.settings import settings
+        from app.core.lifecycle import ApplicationState
+
+        self.logger.info("Initializing voice loop components...")
+        
+        # 1. Instantiate capture, VAD, STT, TTS
+        capture = SoundDeviceAudioCapture(
+            sample_rate=settings.voice_sample_rate,
+            channels=settings.voice_channels,
+            sample_width=settings.voice_sample_width
+        )
+        
+        vad = EnergyBasedVAD(
+            threshold=300.0,
+            wait_timeout=settings.voice_wait_timeout_seconds,
+            min_speech_duration=settings.voice_min_speech_seconds,
+            max_utterance_duration=settings.voice_max_utterance_seconds,
+            end_silence_duration=settings.voice_end_silence_seconds
+        )
+        
+        stt = FasterWhisperSTTProvider(
+            model_size=settings.stt_model,
+            device=settings.stt_device,
+            compute_type=settings.stt_compute_type,
+            language=settings.stt_language
+        )
+        
+        tts = PyTTSx3TTSProvider(
+            voice_id=settings.tts_voice,
+            rate=settings.tts_rate,
+            max_chars=settings.tts_max_chars
+        )
+        
+        manager = VoiceManager(capture=capture, vad=vad, stt=stt, tts=tts)
+        controller = self.container.get("controller")
+        runtime = VoiceRuntime(manager=manager, agent_controller=controller)
+
+        # Register voice manager & runtime in container for testing
+        self.container.register("voice_manager", manager)
+        self.container.register("voice_runtime", runtime)
+
+        # Start runtime (loads STT/TTS engines)
+        runtime.start()
+
+        print("Jarvis Voice Mode")
+        print("Status: Ready")
+        print()
+        print("Press Enter to speak, or type 'exit' to quit.")
+        print()
+
+        try:
+            while self.state == ApplicationState.RUNNING:
+                try:
+                    user_input = input("Press Enter > ").strip()
+                except (KeyboardInterrupt, EOFError):
+                    print("\nSession interrupted.")
+                    break
+
+                if user_input.lower() in ("exit", "quit", "bye"):
+                    render_shutdown_banner()
+                    break
+
+                print("[Listening...]")
+                runtime.listen_and_process()
+                print("Press Enter to speak again.")
+                print()
+        finally:
+            runtime.stop()
+

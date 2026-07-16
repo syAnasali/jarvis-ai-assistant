@@ -26,6 +26,10 @@ Jarvis currently supports interactive, terminal-based conversations with a local
 - **Runtime Diagnostics**: Comprehensive system health status inspections (e.g. validating settings, logs, and data directories).
 - **Centralized ID Generation**: Avoids duplicated ID logic using unified helpers.
 - **Request Timing & Diagnostics**: Captures and logs request duration in milliseconds for performance analysis.
+- **Local Voice Interaction**: Offline speech-to-text (STT) and text-to-speech (TTS) pipeline using faster-whisper and pyttsx3.
+- **Push-to-Talk Stateful Loop**: Coordinates capture, energy-based VAD, and processing states.
+- **Resilient CPU Fallback**: Detects missing Windows CUDA DLLs dynamically and falls back to CPU execution.
+- **Air-Gapped Voice Safety**: Voice requests triggering confirmation/restricted tools automatically suspend execution to `WAITING_APPROVAL` status, block execution, and speak a warning, preventing ambient voice trigger hijacking.
 
 ---
 

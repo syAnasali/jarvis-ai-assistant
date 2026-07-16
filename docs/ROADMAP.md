@@ -32,10 +32,10 @@ This document outlines the multi-phase roadmap for developing the Jarvis AI Assi
 - **Deliverables**: SQLite schema setup, MemoryRepository, SQLiteMemoryRepository, MemoryManager, LexicalMemoryRetriever, MemoryContextBuilder, LLMMemoryExtractor, MemoryExtractionParser, MemoryWriteService, and SecretGuard complete.
 - **Expected Outcome**: Durable long-term memory system is integrated into the agent loop. Facts and preferences are automatically extracted from user input, validation and security filters are applied, exact/near-duplicates are resolved, and contextually relevant memories are retrieved and injected into the model's system prompt dynamically. State and memories persist across restarts.
 
-## Phase 7: Voice System
+## Phase 7: Voice System [Complete]
 - **Goal**: Implement text-to-speech (TTS) and speech-to-text (STT) capabilities.
-- **Deliverables**: Voice activation listener, audio capture pipeline, and speech synthesizers.
-- **Expected Outcome**: The assistant can process raw voice commands and answer the user aloud.
+- **Deliverables**: sounddevice-based `AudioCapture` backend, numpy energy-based `VoiceActivityDetector`, local `FasterWhisperSTTProvider` with dynamic CPU fallback, local offline `PyTTSx3TTSProvider` SAPI5 backend, plain-text speech normalization, `VoiceManager` subsystem coordinator, and push-to-talk stateful `VoiceRuntime` loop with strict confirmation approval safety barriers.
+- **Expected Outcome**: The assistant can process raw voice commands and speak responses aloud offline, maintaining security boundaries and terminal loop compatibility.
 
 ## Phase 8: Controlled Desktop Interaction Runtime [Complete]
 - **Goal**: Construct a policy-controlled, secure Windows desktop automation runtime.
