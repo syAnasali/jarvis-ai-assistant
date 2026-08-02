@@ -137,6 +137,25 @@ Execute the main entry point to start the terminal chat interface:
 python main.py
 ```
 
+To start Jarvis in **Voice Mode** (interactive push-to-talk CLI):
+```bash
+python main.py --voice
+```
+
+To start Jarvis in **Professional Desktop GUI & System Tray** mode:
+```bash
+python main.py --gui
+```
+
+### Running Regressions
+
+Jarvis has an automated regression suite located in `scripts/regression/` that tests all system modules (memory, tools, desktop, filesystem, conversation, planner, scheduler, approval, voice, and providers).
+
+To execute the entire regression suite and view a final report:
+```bash
+python scripts/regression/run_all.py
+```
+
 ---
 
 ## Configuration

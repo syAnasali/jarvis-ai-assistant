@@ -40,6 +40,30 @@ class FilesystemService:
         self._relative_path_max_length = relative_path_max_length
         self.metrics = FilesystemMetrics()
 
+    def _log_start(self, operation: str, original: str, resolved: Any, exists_before: bool) -> None:
+        from app.core.logger import JarvisLogger
+        logger = JarvisLogger.get_logger("filesystem")
+        logger.info(
+            f"Filesystem operation started: {operation}\n"
+            f"Original path: {original}\n"
+            f"Resolved path: {resolved}\n"
+            f"Exists before execution: {exists_before}\n"
+            f"Absolute result path: {resolved}"
+        )
+
+    def _log_completed(self, operation: str, resolved: Any) -> None:
+        from app.core.logger import JarvisLogger
+        logger = JarvisLogger.get_logger("filesystem")
+        try:
+            exists_after = Path(resolved).exists()
+        except Exception:
+            exists_after = False
+        logger.info(
+            f"Filesystem operation completed: {operation}\n"
+            f"Exists after execution: {exists_after}\n"
+            f"Absolute result path: {resolved}"
+        )
+
     def inspect_path(self, root: str, relative_path: str) -> FilesystemTarget:
         """Inspects metadata of a filesystem target path.
 
@@ -54,6 +78,8 @@ class FilesystemService:
 
         try:
             target = self._resolver.resolve(root, relative_path)
+            self._log_start("inspect_path", relative_path, target.resolved_path, target.exists)
+            self._log_completed("inspect_path", target.resolved_path)
             return target
         except FilesystemError as fe:
             self.metrics.increment("policy_rejections")
@@ -78,6 +104,7 @@ class FilesystemService:
 
         try:
             target = self._resolver.resolve(root, relative_path)
+            self._log_start("list_directory", relative_path or "", target.resolved_path, target.exists)
         except FilesystemError as fe:
             self.metrics.increment("policy_rejections")
             raise fe
@@ -148,6 +175,7 @@ class FilesystemService:
         truncated = len(sorted_entries) > list_limit
         final_entries = sorted_entries[:list_limit]
 
+        self._log_completed("list_directory", target.resolved_path)
         return {
             "root": root.lower(),
             "relative_path": target.relative_path,
@@ -175,6 +203,7 @@ class FilesystemService:
 
         try:
             target = self._resolver.resolve(root, relative_path)
+            self._log_start("create_directory", relative_path, target.resolved_path, target.exists)
         except FilesystemError as fe:
             self.metrics.increment("policy_rejections")
             raise fe
@@ -183,6 +212,7 @@ class FilesystemService:
             if target.entry_type == "DIRECTORY":
                 # Idempotent success
                 self.metrics.increment("successful_mutations")
+                self._log_completed("create_directory", target.resolved_path)
                 return True
             else:
                 self.metrics.increment("failed_mutations")
@@ -191,6 +221,7 @@ class FilesystemService:
         try:
             target.resolved_path.mkdir(parents=True, exist_ok=True)
             self.metrics.increment("successful_mutations")
+            self._log_completed("create_directory", target.resolved_path)
             return True
         except Exception as e:
             self.metrics.increment("failed_mutations")
@@ -229,6 +260,7 @@ class FilesystemService:
 
         try:
             target = self._resolver.resolve(root, relative_path)
+            self._log_start("write_text_file", relative_path, target.resolved_path, target.exists)
         except FilesystemError as fe:
             self.metrics.increment("policy_rejections")
             raise fe
@@ -257,6 +289,7 @@ class FilesystemService:
             # Replace target atomically
             os.replace(temp_path, str(target.resolved_path))
             self.metrics.increment("successful_mutations")
+            self._log_completed("write_text_file", target.resolved_path)
             return True
         except Exception as e:
             self.metrics.increment("failed_mutations")
@@ -299,6 +332,10 @@ class FilesystemService:
         try:
             src_target = self._resolver.resolve(source_root, source_relative_path)
             dest_target = self._resolver.resolve(destination_root, destination_relative_path)
+            original_path = f"{source_relative_path} -> {destination_relative_path}"
+            resolved_path = f"{src_target.resolved_path} -> {dest_target.resolved_path}"
+            exists_before = src_target.exists
+            self._log_start("move_path", original_path, resolved_path, exists_before)
         except FilesystemError as fe:
             self.metrics.increment("policy_rejections")
             raise fe
@@ -334,6 +371,7 @@ class FilesystemService:
         try:
             shutil.move(str(src_target.resolved_path), str(dest_target.resolved_path))
             self.metrics.increment("successful_mutations")
+            self._log_completed("move_path", dest_target.resolved_path)
             return True
         except Exception as e:
             self.metrics.increment("failed_mutations")
@@ -357,6 +395,7 @@ class FilesystemService:
 
         try:
             target = self._resolver.resolve(root, relative_path)
+            self._log_start("delete_path", relative_path, target.resolved_path, target.exists)
         except FilesystemError as fe:
             self.metrics.increment("policy_rejections")
             raise fe
@@ -389,6 +428,7 @@ class FilesystemService:
                     resolved_path.rmdir()
 
             self.metrics.increment("successful_mutations")
+            self._log_completed("delete_path", target.resolved_path)
             return True
         except DirectoryNotEmptyError as dnee:
             raise dnee

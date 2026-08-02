@@ -21,7 +21,10 @@ class GetActiveWindowTool(BaseTool):
     def description(self) -> str:
         return (
             "Inspect details of the currently active foreground window "
-            "(returns window ID, title, and process name)."
+            "(returns window ID, title, and process name).\n"
+            "When to use: Use ONLY when you need to check which window is currently active or focused.\n"
+            "When NOT to use: NEVER use if you need to search or focus a different window (use 'list_visible_windows' or 'focus_window' instead).\n"
+            "Realistic examples: get_active_window()"
         )
 
     @property
@@ -65,7 +68,12 @@ class ListVisibleWindowsTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "List details (ID, title, process name) of all visible top-level windows."
+        return (
+            "List details (ID, title, process name) of all visible top-level windows.\n"
+            "When to use: Use ONLY when you need to discover visible windows, their titles, or stable window IDs.\n"
+            "When NOT to use: NEVER use to query background/system processes (use 'list_running_processes' instead).\n"
+            "Realistic examples: list_visible_windows()"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:
@@ -110,7 +118,12 @@ class FocusWindowTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Switch desktop focus to the specified window by stable ID or name/title query (e.g. 'Notepad')."
+        return (
+            "Switch desktop focus to the specified window by stable ID or name/title query (e.g. 'Notepad').\n"
+            "When to use: Use ONLY when you need to bring a specific window to the foreground to type in it or click it.\n"
+            "When NOT to use: NEVER use if the target window is already in the foreground.\n"
+            "Realistic examples: focus_window(window_id='win_a13f82c1')"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:
@@ -175,7 +188,12 @@ class TypeTextTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Type text input into the currently focused active window."
+        return (
+            "Type text input into the currently focused active window.\n"
+            "When to use: Use ONLY when you need to enter characters/text into the active target window.\n"
+            "When NOT to use: NEVER use to send special keypresses like enter, backspace, or escape (use 'press_key' instead).\n"
+            "Realistic examples: type_text(text='Hello Jarvis')"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:
@@ -235,7 +253,12 @@ class PressKeyTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Press an allowed keyboard key (e.g. enter, tab, escape, up, down)."
+        return (
+            "Press an allowed keyboard key (e.g. enter, tab, escape, up, down).\n"
+            "When to use: Use ONLY when sending a single keypress action to the active window.\n"
+            "When NOT to use: NEVER use to type normal words/sentences (use 'type_text' instead). NEVER use for key combinations (use 'press_hotkey' instead).\n"
+            "Realistic examples: press_key(key='enter')"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:
@@ -293,7 +316,12 @@ class PressHotkeyTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Execute an approved keyboard shortcut combination (e.g., ctrl+s, ctrl+c)."
+        return (
+            "Execute an approved keyboard shortcut combination (e.g., ctrl+s, ctrl+c).\n"
+            "When to use: Use ONLY when executing keyboard combinations/shortcuts inside the active window.\n"
+            "When NOT to use: NEVER use to press a single key (use 'press_key' instead).\n"
+            "Realistic examples: press_hotkey(keys=['ctrl', 's'])"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:
@@ -352,7 +380,12 @@ class ClickScreenTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Perform a bounded mouse click at coordinates (x, y)."
+        return (
+            "Perform a bounded mouse click at coordinates (x, y).\n"
+            "When to use: Use ONLY when clicking a button or link at a specific screen location.\n"
+            "When NOT to use: NEVER use if keyboard shortcuts or window focus are sufficient.\n"
+            "Realistic examples: click_screen(x=500, y=300, button='left')"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:

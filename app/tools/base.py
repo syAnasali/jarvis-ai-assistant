@@ -3,7 +3,7 @@
 from abc import ABC, abstractmethod
 from typing import Any, Dict
 from app.tools.models import ToolPermission
-from app.core.exceptions import ToolExecutionError
+from app.core.exceptions import ToolExecutionError, ToolValidationError
 
 
 class BaseTool(ABC):
@@ -44,10 +44,10 @@ class BaseTool(ABC):
             arguments: Arguments dictionary to validate.
 
         Raises:
-            ToolExecutionError: If validation fails.
+            ToolValidationError: If validation fails.
         """
         if not isinstance(arguments, dict):
-            raise ToolExecutionError("Arguments must be provided as a dictionary.")
+            raise ToolValidationError("Arguments must be provided as a dictionary.")
 
         schema = self.get_schema()
         parameters = schema.get("parameters", {})
@@ -57,25 +57,25 @@ class BaseTool(ABC):
         # Check for missing required arguments
         for req_arg in required:
             if req_arg not in arguments:
-                raise ToolExecutionError(f"Missing required argument: '{req_arg}'.")
+                raise ToolValidationError(f"Missing required argument: '{req_arg}'.")
 
         # Check argument types
         for arg_name, arg_val in arguments.items():
             if arg_name not in properties:
-                raise ToolExecutionError(f"Unexpected argument: '{arg_name}'.")
+                raise ToolValidationError(f"Unexpected argument: '{arg_name}'.")
 
             param_def = properties[arg_name]
             expected_type_name = param_def.get("type")
             
             if expected_type_name == "string" and not isinstance(arg_val, str):
-                raise ToolExecutionError(f"Argument '{arg_name}' must be of type string.")
+                raise ToolValidationError(f"Argument '{arg_name}' must be of type string.")
             elif expected_type_name == "integer" and not isinstance(arg_val, int):
-                raise ToolExecutionError(f"Argument '{arg_name}' must be of type integer.")
+                raise ToolValidationError(f"Argument '{arg_name}' must be of type integer.")
             elif expected_type_name == "number" and not isinstance(arg_val, (int, float)):
-                raise ToolExecutionError(f"Argument '{arg_name}' must be of type number.")
+                raise ToolValidationError(f"Argument '{arg_name}' must be of type number.")
             elif expected_type_name == "boolean" and not isinstance(arg_val, bool):
-                raise ToolExecutionError(f"Argument '{arg_name}' must be of type boolean.")
+                raise ToolValidationError(f"Argument '{arg_name}' must be of type boolean.")
             elif expected_type_name == "array" and not isinstance(arg_val, list):
-                raise ToolExecutionError(f"Argument '{arg_name}' must be of type array.")
+                raise ToolValidationError(f"Argument '{arg_name}' must be of type array.")
             elif expected_type_name == "object" and not isinstance(arg_val, dict):
-                raise ToolExecutionError(f"Argument '{arg_name}' must be of type object.")
+                raise ToolValidationError(f"Argument '{arg_name}' must be of type object.")

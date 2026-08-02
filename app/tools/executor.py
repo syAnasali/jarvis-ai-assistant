@@ -5,7 +5,7 @@ from typing import Any, Dict
 from app.tools.registry import ToolRegistry
 from app.tools.models import ToolPermission, ToolResult
 from app.agent.models import ToolCall
-from app.core.exceptions import ToolExecutionError
+from app.core.exceptions import ToolExecutionError, ToolValidationError
 from app.core.logger import JarvisLogger
 
 logger = JarvisLogger.get_logger("tool_executor")
@@ -42,7 +42,10 @@ class ToolExecutor:
             # 1. Resolve tool
             tool = self._registry.get(name)
 
-            # 2. Check permission level
+            # 2. Validate arguments BEFORE checking permission level (ensuring validation happens before approval)
+            tool.validate_arguments(arguments)
+            
+            # 3. Check permission level
             logger.info(f"Tool permission evaluated: '{name}' level={tool.permission_level.name}")
             if tool.permission_level == ToolPermission.CONFIRMATION:
                 if approval_action_id is not None and self._approval_manager is not None:
@@ -84,6 +87,8 @@ class ToolExecutor:
                         reason=reason,
                         metadata=metadata
                     )
+                    logger.info(f"Pending action created: action_id={action.action_id} tool_name={name}")
+                    logger.info(f"Waiting for approval: action_id={action.action_id} tool={name}")
                     logger.warning(f"Tool execution suspended: '{name}' requires confirmation. PendingAction ID: {action.action_id}")
                     return ToolResult(
                         tool_name=name,
@@ -106,10 +111,10 @@ class ToolExecutor:
                     metadata={"permission_level": tool.permission_level.value}
                 )
 
-            # 3. Validate arguments
-            tool.validate_arguments(arguments)
+            # Removed redundant validation step from here
 
             # 4. Execute tool
+            logger.info(f"Tool execution started: tool_name={name}")
             logger.info(f"Tool execution started: '{name}'")
             start_time = time.perf_counter()
             if hasattr(tool, "current_approval_action_id"):
@@ -120,7 +125,11 @@ class ToolExecutor:
                 if hasattr(tool, "current_approval_action_id"):
                     tool.current_approval_action_id = None
             duration_ms = (time.perf_counter() - start_time) * 1000
+            logger.info(f"Tool execution completed: tool_name={name}")
             logger.info(f"Tool execution completed: '{name}' in {duration_ms:.2f} ms")
+            
+            if name in ("create_file", "write_text_file", "move_path", "delete_path", "create_directory", "inspect_path", "list_directory", "read_text_file"):
+                logger.info(f"Filesystem result: {output}")
 
             return ToolResult(
                 tool_name=name,
@@ -132,8 +141,20 @@ class ToolExecutor:
                 }
             )
 
+        except ToolValidationError as tve:
+            logger.error(f"Tool validation failed: {tve}")
+            if name in ("create_file", "write_text_file", "move_path", "delete_path", "create_directory", "inspect_path", "list_directory", "read_text_file"):
+                logger.info(f"Filesystem result: error={tve}")
+            return ToolResult(
+                tool_name=name,
+                success=False,
+                error=str(tve),
+                metadata={"validation_failed": True}
+            )
         except ToolExecutionError as tee:
             logger.error(f"Tool execution failed (validation/registry): {tee}")
+            if name in ("create_file", "write_text_file", "move_path", "delete_path", "create_directory", "inspect_path", "list_directory", "read_text_file"):
+                logger.info(f"Filesystem result: error={tee}")
             return ToolResult(
                 tool_name=name,
                 success=False,
@@ -142,6 +163,8 @@ class ToolExecutor:
             )
         except Exception as e:
             logger.error(f"Tool execution failed (runtime): {e}")
+            if name in ("create_file", "write_text_file", "move_path", "delete_path", "create_directory", "inspect_path", "list_directory", "read_text_file"):
+                logger.info(f"Filesystem result: error={e}")
             return ToolResult(
                 tool_name=name,
                 success=False,

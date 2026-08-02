@@ -31,7 +31,8 @@ class OllamaProvider(BaseLLMProvider):
             LLMError: If server connection fails or model is not loaded.
         """
         try:
-            self._client = Client(host=self._host)
+            from app.config.settings import settings
+            self._client = Client(host=self._host, timeout=settings.llm_timeout)
             self._verify_model_exists()
         except Exception as e:
             if isinstance(e, LLMError):

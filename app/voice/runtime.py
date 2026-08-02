@@ -16,10 +16,11 @@ logger = JarvisLogger.get_logger("voice_runtime")
 class VoiceRuntime:
     """Manages push-to-talk voice loops, transitions, and AgentController coupling."""
 
-    def __init__(self, manager: VoiceManager, agent_controller: Any) -> None:
+    def __init__(self, manager: VoiceManager, agent_controller: Any, on_state_changed: Optional[Any] = None) -> None:
         self.manager = manager
         self.agent_controller = agent_controller
         self._state: VoiceState = VoiceState.STOPPED
+        self.on_state_changed = on_state_changed
 
         # Valid transitions mapping: current_state -> set of allowed next_states
         self._allowed_transitions: Dict[VoiceState, set] = {
@@ -52,6 +53,11 @@ class VoiceRuntime:
 
         logger.info(f"Voice state transition: {self._state.name} -> {new_state.name}")
         self._state = new_state
+        if self.on_state_changed:
+            try:
+                self.on_state_changed(new_state)
+            except Exception as e:
+                logger.error(f"Error in on_state_changed callback: {e}")
 
     def start(self) -> None:
         """Starts voice runtime system."""

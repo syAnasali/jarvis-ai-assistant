@@ -49,3 +49,11 @@ class AgentExecutionMetrics:
     pending_action_id: str | None = None
     confirmation_required: bool = False
     tool_calls_data: list[dict[str, Any]] = ()
+    planner_latency_ms: float = 0.0
+    prompt_construction_duration_ms: float = 0.0
+    llm_latency_ms: float = 0.0
+    streaming_latency_ms: float = 0.0
+    tool_execution_duration_ms: float = 0.0
+    approval_wait_duration_ms: float = 0.0
+    conversation_persistence_duration_ms: float = 0.0
+    timeline_stages: list[dict[str, Any]] = ()

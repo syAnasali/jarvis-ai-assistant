@@ -77,7 +77,9 @@ class Application:
             print()
 
             import sys
-            if "--voice" in sys.argv:
+            if "--gui" in sys.argv:
+                self._run_gui_loop()
+            elif "--voice" in sys.argv:
                 self._run_voice_loop()
             else:
                 self._run_chat_loop()
@@ -123,6 +125,15 @@ class Application:
             "settings": "loaded" if settings_loaded else "missing",
             "directories": "verified" if dirs_ok else "unverified"
         }
+
+    def get_diagnostics(self) -> Dict[str, Any]:
+        """Provides developer-only diagnostics information across registered services.
+
+        Returns:
+            Dict[str, Any]: Aggregated diagnostic summary map.
+        """
+        from app.core.diagnostics import DiagnosticsProvider
+        return DiagnosticsProvider.get_all_diagnostics(self.container)
 
     def _initialize_llm(self) -> None:
         """Sets up the LLMManager and registers the default OllamaProvider."""
@@ -262,6 +273,7 @@ class Application:
             WriteTextFileTool,
             MovePathTool,
             DeletePathTool,
+            CreateFileTool,
         )
         from app.services.filesystem.policy import FilesystemPolicy
         from app.services.filesystem.resolver import FilesystemResolver
@@ -317,6 +329,7 @@ class Application:
         registry.register(InspectPathTool(filesystem_service))
         registry.register(ListDirectoryTool(filesystem_service))
         registry.register(CreateDirectoryTool(filesystem_service))
+        registry.register(CreateFileTool(filesystem_service))
         registry.register(WriteTextFileTool(filesystem_service))
         registry.register(MovePathTool(filesystem_service))
         registry.register(DeletePathTool(filesystem_service))
@@ -358,7 +371,13 @@ class Application:
         planning_router = ExecutionRouter()
         planning_planner = LLMTaskPlanner(llm_manager)
         planning_validator = PlanValidator(registry)
-        task_executor = TaskExecutor(llm_manager, registry, executor, planning_validator)
+        task_executor = TaskExecutor(
+            llm_manager=llm_manager,
+            registry=registry,
+            tool_executor=executor,
+            validator=planning_validator,
+            planner=planning_planner
+        )
 
         self.container.register("planning_router", planning_router)
         self.container.register("planning_planner", planning_planner)
@@ -585,4 +604,25 @@ class Application:
                 print()
         finally:
             runtime.stop()
+
+    def _run_gui_loop(self) -> None:
+        """Runs the PySide6 Desktop GUI and system tray loop."""
+        import sys
+        from PySide6.QtWidgets import QApplication
+        from app.ui.app import MainWindow
+        from app.core.lifecycle import ApplicationState
+        
+        self.logger.info("Initializing PySide6 GUI Loop...")
+        
+        qt_app = QApplication.instance()
+        if not qt_app:
+            qt_app = QApplication(sys.argv)
+            
+        window = MainWindow(self)
+        window.show()
+        
+        try:
+            qt_app.exec()
+        finally:
+            self.shutdown()
 

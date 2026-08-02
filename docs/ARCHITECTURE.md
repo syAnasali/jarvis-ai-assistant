@@ -273,3 +273,70 @@ graph TD
 - **Strict Approval Barriers**: Voice commands are processed as standard requests but cannot bypass the controlled approval runtime. Spoken confirmation (e.g., saying "yes" or "ok") is not accepted for executing `CONFIRMATION` or `RESTRICTED` tools. The system transitions to the `WAITING_APPROVAL` state, plays an audio warning, and blocks execution until explicit terminal approval is granted. This protects the user from voice-based attacks (e.g. ambient voice triggers).
 - **Dynamic Fallbacks**: The `FasterWhisperSTTProvider` automatically checks for local GPU/CUDA execution. If missing runtime dependencies or DLLs are detected at transcription runtime, it logs a warning, switches parameters, reloads the Whisper model on the CPU, and retries transcription.
 - **Speech Normalization**: To prevent the speech synthesizer from speaking raw Markdown formatting markers, the `PyTTSx3TTSProvider` applies a pipeline of regular expressions to clean bullet points, heading tags, bold/italic symbols, code fences, and redundant whitespaces while preserving word-internal underscores (like `execute_action`).
+
+---
+
+## 16. PySide6 Desktop UI & System Tray
+
+Jarvis incorporates a production-grade dark mode desktop user interface and system tray built on PySide6. The GUI is structured as a non-intrusive adapter wrapping the core agent container.
+
+### Thread Model and Asynchrony
+To guarantee a 100% responsive, non-blocking UI, execution boundaries are strictly separated:
+- **GUI Thread**: Executes the PySide6 `QApplication` event loop, drawing layouts, updating status bars, and capturing user actions.
+- **Agent Worker Thread (`AgentWorker`)**: A background `QThread` that handles model inference, context loading, memory updates, and tool execution.
+- **Voice Worker Thread (`VoiceWorker`)**: A background `QThread` executing `VoiceRuntime.listen_and_process()` when voice mode is activated.
+
+```mermaid
+sequenceDiagram
+    participant GUI as GUI Thread
+    participant Worker as Agent Worker Thread
+    participant DB as SQLite DB
+    GUI->>Worker: start() (AgentRequest)
+    Worker->>Worker: Route request
+    Worker->>Worker: LLM inference stream
+    Worker-->>GUI: emit chunk_received(chunk)
+    Worker->>Worker: Suspend for confirmation
+    Worker-->>GUI: emit approval_requested(action_id, tool_name)
+    Note over Worker: Block on Event.wait()
+    GUI->>DB: Approve action (approve(action_id))
+    GUI->>Worker: submit_approval_result(True)
+    Note over Worker: Wakes up (Event.set())
+    Worker->>Worker: Resume and execute tool
+    Worker-->>GUI: emit response_completed(Message)
+```
+
+### Signal Flow and Adapter Layer
+Custom Qt signals facilitate data flow across thread boundaries:
+- `chunk_received(str)`: Streams intermediate LLM text output into the chat view.
+- `response_completed(Message)`: Delivers the final agent answer and triggers sidebar database counts refresh.
+- `approval_requested(action_id, tool_name, reason, arguments)`: Pauses background execution and loads an interactive approval card.
+- `timeline_event(event_name, details, timestamp)`: Dispatches timing ticks to the execution activity timeline.
+- `state_changed(VoiceState)`: Drives voice indicator updates whenever the stateful voice loop transitions.
+- `error_occurred(str)`: Intercepts background failures and converts them into user-friendly UI notifications.
+
+### Approval UI Card integration
+When a tool requires human confirmation, the GUI intercepts the suspension metadata, injects an `ApprovalCardWidget` directly into the scrollable conversation pane, and starts a local countdown timer (default 30s). 
+- If **Approve** or **Reject** is clicked (or it times out), the status is updated in the database using the existing `ApprovalManager` runtime.
+- The UI signals the `AgentWorker` to release its synchronization event, allowing execution to resume securely.
+
+### System Tray and Window Lifecycle
+The tray adapter (`JarvisSystemTray`) maintains application execution context:
+- Clicking the window close (`X`) button ignores normal close events, hiding the window to the tray while background services keep running.
+- Context menus allow toggling Voice Mode, returning to Terminal Mode (which minimizes the GUI and resumes console hooks), opening Settings, or executing a full application exit.
+- Unhandled application exceptions are caught via `sys.excepthook` and formatted into styled `QMessageBox` errors.
+
+---
+
+## 17. Runtime Reliability, Safeguards, and Recovery
+
+To ensure production-grade reliability, the Jarvis runtime implements defensive safeguards, structured logging, and robust exception boundaries:
+
+### Execution Safeguards
+- **Recursion depth limit**: The execution loop tracks plan invocation depth. If recursion exceeds a maximum depth of 2 (e.g. from successive recovery attempts), execution halts and returns a safe error to prevent infinite loops.
+- **Duplicate tool call prevention**: If a revised plan schedules the exact same tool name with the identical arguments as a previously failed step, the safeguard intercepts the call and blocks execution immediately.
+- **Plan execution timeouts**: Measures execution duration and aborts if it exceeds a 120s limit.
+- **LLM call timeouts**: Restricts the maximum time allowed for an inference call to prevent infinite waiting on connection hangs.
+
+### Graceful Recovery Boundaries
+- **Top-Level Catch Boundary**: The `AgentController.process_request` entry point catches specific exception domains (connection failures, permission errors, missing files, user rejections, timeouts) and translates them into friendly user-facing messages.
+- **Unified Diagnostic Logging**: Every processed request logs a structured message containing the request ID, selected tools list, planning retries count, validation failures, total execution duration, and the recovery path identifier.

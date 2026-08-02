@@ -4,7 +4,7 @@ from pathlib import Path
 from typing import Any, Dict, Optional
 from app.tools.base import BaseTool
 from app.tools.models import ToolPermission
-from app.core.exceptions import ToolExecutionError, FilesystemError
+from app.core.exceptions import ToolExecutionError, FilesystemError, ToolValidationError
 from app.services.filesystem.service import FilesystemService
 
 # Sensitive filename denylist patterns
@@ -93,7 +93,10 @@ class InspectPathTool(BaseTool):
     def description(self) -> str:
         return (
             "Inspect the metadata of a path under a logical root. Returns model-safe information "
-            "such as existence, type (FILE or DIRECTORY), size in bytes, and last modified timestamp."
+            "such as existence, type (FILE or DIRECTORY), size in bytes, and last modified timestamp.\n"
+            "When to use: Use ONLY when you need to check if a file/directory exists, check its size, or verify its type.\n"
+            "When NOT to use: NEVER use to read file content (use 'read_text_file' or 'view_file' if available). NEVER use to list directory contents.\n"
+            "Realistic examples: inspect_path(root='desktop', relative_path='projects/jarvis')"
         )
 
     @property
@@ -153,7 +156,10 @@ class ListDirectoryTool(BaseTool):
     def description(self) -> str:
         return (
             "List the contents of a directory under a logical root (directories first, then files, "
-            "sorted alphabetically) without recursing. Returns name, type, and size."
+            "sorted alphabetically) without recursing. Returns name, type, and size.\n"
+            "When to use: Use ONLY when you need to enumerate the files/folders directly inside a folder.\n"
+            "When NOT to use: NEVER use to search for files recursively across the entire system. NEVER use to check file content.\n"
+            "Realistic examples: list_directory(root='desktop', relative_path='projects')"
         )
 
     @property
@@ -216,8 +222,10 @@ class CreateDirectoryTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Create a directory under a logical root. Supports creating parent directories. "
-            "Requires explicit human confirmation before execution."
+            "Create a directory (folder) under a logical root. Supports creating parent directories.\n"
+            "When to use: Use ONLY when creating folders/directories.\n"
+            "When NOT to use: NEVER use for creating files. NEVER use if the target path ends with a file extension (e.g., .txt, .py, .json, .md, .csv, .pdf, etc.).\n"
+            "Realistic examples: create_directory(root='desktop', relative_path='projects/jarvis')"
         )
 
     @property
@@ -243,6 +251,16 @@ class CreateDirectoryTool(BaseTool):
                 "required": ["root", "relative_path"]
             }
         }
+
+    def validate_arguments(self, arguments: Dict[str, Any]) -> None:
+        super().validate_arguments(arguments)
+        relative_path = arguments.get("relative_path", "")
+        basename = os.path.basename(relative_path)
+        if "." in basename and not basename.startswith("."):
+            raise ToolValidationError(
+                f"Validation failed: 'create_directory' must only be used for folders/directories. "
+                f"Paths ending with file extensions are invalid. Got: {relative_path}"
+            )
 
     def execute(self, **kwargs: Any) -> Dict[str, Any]:
         root = kwargs.get("root")
@@ -276,9 +294,10 @@ class WriteTextFileTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Write character content to a text file under a logical root using UTF-8 encoding. "
-            "Strictly rejects executable extensions and non-text indicators. "
-            "Requires explicit human confirmation before execution."
+            "Write character content to a text file under a logical root using UTF-8 encoding.\n"
+            "When to use: Use ONLY when the user explicitly provides content to write/save to a file.\n"
+            "When NOT to use: NEVER use for creating empty files (use 'create_file' instead). NEVER use for folders/directories.\n"
+            "Realistic examples: write_text_file(root='desktop', relative_path='notes.txt', content='Meeting notes: ...')"
         )
 
     @property
@@ -308,6 +327,22 @@ class WriteTextFileTool(BaseTool):
                 "required": ["root", "relative_path", "content"]
             }
         }
+
+    def validate_arguments(self, arguments: Dict[str, Any]) -> None:
+        super().validate_arguments(arguments)
+        relative_path = arguments.get("relative_path", "")
+        content = arguments.get("content", None)
+
+        if relative_path.endswith("/") or relative_path.endswith("\\") or "." not in os.path.basename(relative_path):
+            raise ToolValidationError(
+                f"Validation failed: 'write_text_file' must target a file path, never a directory. Got: {relative_path}"
+            )
+
+        if content is None or (isinstance(content, str) and not content.strip()):
+            raise ToolValidationError(
+                "Validation failed: 'write_text_file' requires non-empty content to write. "
+                "Use 'create_file' to create an empty file."
+            )
 
     def get_approval_metadata(self, arguments: Dict[str, Any]) -> Dict[str, Any]:
         """Check if target already exists to determine if it is an overwrite."""
@@ -352,9 +387,11 @@ class MovePathTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Move a file or directory from a source logical root and path to a destination logical root and path. "
-            "Fails if a destination collision occurs. "
-            "Requires explicit human confirmation before execution."
+            "Move or rename a file or directory from a source logical root and path to a destination logical root and path. "
+            "Fails if a destination collision occurs.\n"
+            "When to use: Use ONLY when you need to rename a file/folder or move it to a different path/directory.\n"
+            "When NOT to use: NEVER use to copy files/folders. NEVER use if you want to overwrite a destination file without checking.\n"
+            "Realistic examples: move_path(src_root='desktop', src_path='old.txt', dest_root='desktop', dest_path='new.txt')"
         )
 
     @property
@@ -425,8 +462,10 @@ class DeletePathTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Delete a file or directory under a logical root. Non-empty directories require recursive=true. "
-            "Requires explicit human confirmation before execution."
+            "Delete a file or directory under a logical root. Non-empty directories require recursive=true.\n"
+            "When to use: Use ONLY when you need to remove a file or folder from the filesystem permanently.\n"
+            "When NOT to use: NEVER use if you just want to empty a file's content but keep the file (write empty string instead). NEVER use to delete system-critical folders.\n"
+            "Realistic examples: delete_path(root='desktop', relative_path='temp_data.csv')"
         )
 
     @property
@@ -479,3 +518,74 @@ class DeletePathTool(BaseTool):
             raise ToolExecutionError(str(fe))
         except Exception as e:
             raise ToolExecutionError(f"Delete failed: {e}")
+
+
+class CreateFileTool(BaseTool):
+    """Tool to create a new empty file under a logical root."""
+
+    def __init__(self, service: Optional[FilesystemService] = None) -> None:
+        """Initializes the CreateFileTool."""
+        if service is None:
+            from app.services.filesystem.policy import FilesystemPolicy
+            from app.services.filesystem.resolver import FilesystemResolver
+            policy = FilesystemPolicy()
+            service = FilesystemService(policy, FilesystemResolver(policy))
+        self._service = service
+
+    @property
+    def name(self) -> str:
+        return "create_file"
+
+    @property
+    def description(self) -> str:
+        return (
+            "Create a new empty file under a logical root.\n"
+            "When to use: Use ONLY when creating a new, empty file.\n"
+            "When NOT to use: NEVER use for folders/directories. NEVER use if you already have content to write (use 'write_text_file' instead).\n"
+            "Realistic examples: create_file(root='desktop', relative_path='notes.txt')"
+        )
+
+    @property
+    def permission_level(self) -> ToolPermission:
+        return ToolPermission.CONFIRMATION
+
+    def get_schema(self) -> Dict[str, Any]:
+        return {
+            "name": self.name,
+            "description": self.description,
+            "parameters": {
+                "type": "object",
+                "properties": {
+                    "root": {
+                        "type": "string",
+                        "description": "The trusted logical root directory (e.g., 'desktop', 'documents', 'downloads', 'workspace')."
+                    },
+                    "relative_path": {
+                        "type": "string",
+                        "description": "The relative file path to create."
+                    }
+                },
+                "required": ["root", "relative_path"]
+            }
+        }
+
+    def validate_arguments(self, arguments: Dict[str, Any]) -> None:
+        super().validate_arguments(arguments)
+        relative_path = arguments.get("relative_path", "")
+
+        if not relative_path.strip() or relative_path.endswith("/") or relative_path.endswith("\\") or not os.path.basename(relative_path).strip() or "." not in os.path.basename(relative_path):
+            raise ToolValidationError(
+                f"Validation failed: 'create_file' must only be used for files, never for folders. Got: {relative_path}"
+            )
+
+    def execute(self, **kwargs: Any) -> Dict[str, Any]:
+        root = kwargs.get("root")
+        relative_path = kwargs.get("relative_path")
+
+        try:
+            success = self._service.write_text_file(root, relative_path, "")
+            return {"success": success, "message": f"Empty file created successfully under '{root}': {relative_path}"}
+        except FilesystemError as fe:
+            raise ToolExecutionError(str(fe))
+        except Exception as e:
+            raise ToolExecutionError(f"File creation failed: {e}")

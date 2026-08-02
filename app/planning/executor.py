@@ -9,7 +9,7 @@ from app.core.logger import JarvisLogger
 from app.ai.manager import LLMManager
 from app.ai.scheduler import InferencePriority
 from app.ai.models import GenerationProfile
-from app.agent.models import ToolCall
+from app.agent.models import ToolCall, AgentRequest
 from app.tools.executor import ToolExecutor
 from app.tools.registry import ToolRegistry
 from app.planning.models import TaskPlan, PlanStatus, StepStatus, StepType, StepObservation, PlanExecutionResult
@@ -28,7 +28,8 @@ class TaskExecutor:
         llm_manager: LLMManager,
         registry: ToolRegistry,
         tool_executor: ToolExecutor,
-        validator: PlanValidator | None = None
+        validator: PlanValidator | None = None,
+        planner: Any | None = None
     ) -> None:
         """Initializes the TaskExecutor.
 
@@ -37,11 +38,13 @@ class TaskExecutor:
             registry: The tool registry.
             tool_executor: The safe tool executor boundary.
             validator: Optional validator override.
+            planner: Optional TaskPlanner for retries.
         """
         self._llm_manager = llm_manager
         self._registry = registry
         self._tool_executor = tool_executor
         self._validator = validator or PlanValidator(registry)
+        self._planner = planner
 
     def execute(
         self,
@@ -49,7 +52,10 @@ class TaskExecutor:
         original_request_text: str,
         routing_confidence: float = 1.0,
         approval_action_id: str | None = None,
-        previous_observations: List[StepObservation] | None = None
+        previous_observations: List[StepObservation] | None = None,
+        retry_allowed: bool = True,
+        recursion_depth: int = 0,
+        failed_attempts: set | None = None
     ) -> PlanExecutionResult:
         """Runs the validation and sequential execution lifecycle for a TaskPlan.
 
@@ -67,6 +73,18 @@ class TaskExecutor:
             PlanLimitError: If plan length constraints are violated.
             PlanExecutionError: For unexpected programming or system failures.
         """
+        # Recursion depth check
+        if recursion_depth > 2:
+            logger.error("Recursion limit exceeded in TaskExecutor.")
+            raise PlanExecutionError("Plan execution aborted: Recursion depth safeguard triggered.")
+
+        # Overall timeout tracker
+        plan_start_time = time.perf_counter()
+        max_duration_seconds = 120.0
+
+        if failed_attempts is None:
+            failed_attempts = set()
+
         start_time = time.perf_counter()
         
         # 1. Defense-in-depth steps limit check
@@ -116,6 +134,11 @@ class TaskExecutor:
                 steps_skipped += 1
                 continue
 
+            # Timeout validation
+            if time.perf_counter() - plan_start_time > max_duration_seconds:
+                logger.error("Overall plan execution timeout exceeded.")
+                raise PlanExecutionError("Plan execution aborted: Timeout limit exceeded.")
+
             is_suspended_step = (step.status == StepStatus.WAITING_APPROVAL)
             step.status = StepStatus.RUNNING
             step_start = time.perf_counter()
@@ -123,6 +146,13 @@ class TaskExecutor:
 
             try:
                 if step.step_type == StepType.TOOL:
+                    # Duplicate tool call protection
+                    arg_tuple = tuple(sorted((k, str(v)) for k, v in step.tool_arguments.items()))
+                    attempt_key = (step.tool_name, arg_tuple)
+                    if attempt_key in failed_attempts:
+                        logger.warning(f"Safeguard triggered: Duplicate tool call detected for '{step.tool_name}' with arguments {step.tool_arguments}. Blocking execution to prevent loop.")
+                        raise StepExecutionError(f"Duplicate tool call blocked: '{step.tool_name}' previously failed with identical arguments.")
+
                     # TOOL step execution
                     tc = ToolCall(tool_name=step.tool_name, arguments=step.tool_arguments)
                     tool_calls_count += 1
@@ -147,6 +177,45 @@ class TaskExecutor:
                         steps_completed += 1
                         obs_content = str(tool_result.output) if tool_result.output is not None else ""
                     else:
+                        # Check if retry is allowed and planner is available
+                        # We allow retrying both validation errors and execution failures!
+                        if retry_allowed and self._planner is not None:
+                            # Add to failed attempts to prevent duplicate call in subsequent run
+                            failed_attempts.add(attempt_key)
+                            
+                            logger.info(f"Step {step.sequence} failed. Attempting planner retry...")
+                            retry_request = AgentRequest(
+                                request_id="retry_req",
+                                text=(
+                                    f"{original_request_text}\n\n"
+                                    f"[System Feedback: The previous plan failed at step {step.sequence} because "
+                                    f"tool '{step.tool_name}' failed with error: {tool_result.error}. "
+                                    f"Please select a better tool or supply correct arguments in the new plan.]"
+                                ),
+                                source="retry",
+                                timestamp=datetime.now(timezone.utc)
+                            )
+                            try:
+                                available_tools = self._registry.get_schemas()
+                                revised_plan = self._planner.create_plan(
+                                    request=retry_request,
+                                    available_tools=available_tools,
+                                    conversation_history=None
+                                )
+                                logger.info(f"Executing revised plan with {len(revised_plan.steps)} steps...")
+                                return self.execute(
+                                    plan=revised_plan,
+                                    original_request_text=original_request_text,
+                                    routing_confidence=routing_confidence,
+                                    approval_action_id=approval_action_id,
+                                    previous_observations=None,
+                                    retry_allowed=False,
+                                    recursion_depth=recursion_depth + 1,
+                                    failed_attempts=failed_attempts
+                                )
+                            except Exception as pe:
+                                logger.error(f"Planner retry generation or execution failed: {pe}")
+
                         step.status = StepStatus.FAILED
                         steps_failed += 1
                         obs_content = tool_result.error or "Unknown tool execution failure."

@@ -43,6 +43,10 @@ class ToolExecutionError(JarvisError):
     """Raised when a system tool fails to execute or fails verification."""
 
 
+class ToolValidationError(ToolExecutionError):
+    """Raised when arguments supplied to a system tool fail validation constraints."""
+
+
 class ApplicationStartupError(JarvisError):
     """Raised when the application fails to start up correctly."""
 

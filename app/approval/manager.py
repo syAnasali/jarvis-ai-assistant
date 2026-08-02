@@ -28,15 +28,15 @@ def canonicalize(val: Any) -> Any:
 class ApprovalManager:
     """Coordinates creating, approving, rejecting, expiring, and consuming approvals."""
 
-    def __init__(self, repository: ApprovalRepository, timeout_seconds: int = 120) -> None:
+    def __init__(self, repository: ApprovalRepository, timeout_seconds: Optional[int] = None) -> None:
         """Initializes the ApprovalManager.
 
         Args:
             repository: The approval repository.
-            timeout_seconds: Expiration timeout in seconds.
+            timeout_seconds: Expiration timeout in seconds, or None for no expiration.
         """
         self._repository = repository
-        if timeout_seconds <= 0:
+        if timeout_seconds is not None and timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive.")
         self._timeout_seconds = timeout_seconds
 
@@ -53,7 +53,10 @@ class ApprovalManager:
         """Creates and persists a new PendingAction in PENDING status."""
         action_id = generate_action_id()
         now = datetime.now(timezone.utc)
-        expires_at = now + timedelta(seconds=self._timeout_seconds)
+        if self._timeout_seconds is not None:
+            expires_at = now + timedelta(seconds=self._timeout_seconds)
+        else:
+            expires_at = datetime(9999, 12, 31, 23, 59, 59, tzinfo=timezone.utc)
 
         action = PendingAction(
             action_id=action_id,
@@ -75,6 +78,7 @@ class ApprovalManager:
 
     def approve(self, action_id: str) -> None:
         """Approves a pending action."""
+        logger.info(f"Approval received: action_id={action_id}")
         self.expire_pending_actions()
         action = self._repository.get(action_id)
         if not action:
@@ -86,10 +90,12 @@ class ApprovalManager:
             raise ApprovalError(f"Cannot approve action '{action_id}' with status '{action.status.value}'. Only PENDING actions can be approved.")
 
         self._repository.update_status(action_id, PendingActionStatus.APPROVED)
+        logger.info(f"Approval accepted: action_id={action_id}")
         logger.info(f"Action approved: action_id={action_id} tool_name={action.tool_name}")
 
     def reject(self, action_id: str) -> None:
         """Rejects a pending action."""
+        logger.info(f"Approval received: action_id={action_id}")
         self.expire_pending_actions()
         action = self._repository.get(action_id)
         if not action:
@@ -99,6 +105,7 @@ class ApprovalManager:
             raise ApprovalError(f"Cannot reject action '{action_id}' with status '{action.status.value}'. Only PENDING actions can be rejected.")
 
         self._repository.update_status(action_id, PendingActionStatus.REJECTED)
+        logger.info(f"Approval rejected: action_id={action_id}")
         logger.info(f"Action rejected: action_id={action_id} tool_name={action.tool_name}")
 
     def get(self, action_id: str) -> Optional[PendingAction]:
@@ -156,4 +163,4 @@ class ApprovalManager:
             logger.warning(f"Replay blocked: Concurrent consumption failed for action '{action_id}'.")
             raise ApprovalError(f"Replay blocked: Action '{action_id}' has already been consumed.")
 
-        logger.info(f"Approval consumed successfully: action_id={action_id} tool_name={tool_name}")
+        logger.info(f"Approval consumed: action_id={action_id} tool_name={tool_name}")

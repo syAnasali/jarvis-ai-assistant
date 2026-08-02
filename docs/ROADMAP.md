@@ -42,22 +42,27 @@ This document outlines the multi-phase roadmap for developing the Jarvis AI Assi
 - **Deliverables**: `DesktopService`, `DesktopPolicy` with strict key/hotkey allowlists, `WindowsDesktopBackend` using native `ctypes` Win32 APIs, `DesktopResolver` for candidate mapping, stable runtime-local window ID mapping, foreground-target focus verification guards, and 7 desktop tools (`get_active_window`, `list_visible_windows`, `focus_window`, `type_text`, `press_key`, `press_hotkey`, `click_screen`).
 - **Expected Outcome**: The assistant can safely inspect and automate UI actions on Windows. All mutations are protected by the `CONFIRMATION` permission level, and a foreground focus change guard automatically aborts execution if the active window switches between approval and execution. Includes full E2E planned sequential diagnostics and unit test suite coverage.
 
-## Phase 9: Advanced Features
+## Phase 9: Professional Desktop UI + System Tray [Complete]
+- **Goal**: Implement a production-quality, responsive desktop GUI and system tray adapter.
+- **Deliverables**: PySide6 dark mode theme, system tray menu controls, non-blocking asynchronous `AgentWorker` and `VoiceWorker` QThreads, dynamic state-driven voice indicators, embedded `ApprovalCardWidget` for pending approvals, Markdown chat rendering with copyable code blocks, settings dialog editor, and E2E GUI thread diagnostics.
+- **Expected Outcome**: Users can interact with Jarvis through a modern desktop window or minimize it to the system tray, while preserving terminal compatibility and approval database guarantees.
+
+## Phase 10: Advanced Features
 - **Goal**: Implement context-rich, long-term memory retrieval and advanced agent reasoning.
 - **Deliverables**: Vector database wrappers, semantic memories, and multi-step task planning.
 - **Expected Outcome**: The assistant can retrieve relevant history based on context and complete complex objectives.
 
-## Phase 10: Testing
+## Phase 11: Testing
 - **Goal**: Build complete test suites verifying all subsystems.
 - **Deliverables**: Unit tests, integration tests, mock environments, and automated CI pipelines.
 - **Expected Outcome**: High confidence in code changes and regression protection.
 
-## Phase 11: Packaging
+## Phase 12: Packaging
 - **Goal**: Create production installers and executables.
 - **Deliverables**: Packaging scripts, application icons, and installer executable bundle.
 - **Expected Outcome**: Single-click installation package ready for end-user deployment.
 
-## Phase 12: Documentation
+## Phase 13: Documentation
 - **Goal**: Finalize user and developer manuals.
 - **Deliverables**: User manual, developer contribution guides, and complete API references.
 - **Expected Outcome**: Comprehensive guides facilitating system usage, contribution, and maintenance.

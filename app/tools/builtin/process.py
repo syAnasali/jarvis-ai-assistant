@@ -18,7 +18,10 @@ class ListRunningProcessesTool(BaseTool):
     def description(self) -> str:
         return (
             "Retrieve a list of running processes on the local machine sorted by PID. "
-            "Exposes only PID, process name, and executable path if accessible."
+            "Exposes only PID, process name, and executable path if accessible.\n"
+            "When to use: Use ONLY when you need to inspect the overall list of running processes or active services on the OS.\n"
+            "When NOT to use: NEVER use to search for a specific process if you already know its name (use 'find_running_process' instead).\n"
+            "Realistic examples: list_running_processes(limit=10)"
         )
 
     @property
@@ -90,7 +93,10 @@ class FindRunningProcessTool(BaseTool):
     def description(self) -> str:
         return (
             "Search running processes by name using a case-insensitive query. "
-            "Matches against process names and executable file names."
+            "Matches against process names and executable file names.\n"
+            "When to use: Use ONLY when you need to see if a specific program or background process is currently running.\n"
+            "When NOT to use: NEVER use to list all processes. NEVER use to check installed programs that are not active.\n"
+            "Realistic examples: find_running_process(query='chrome')"
         )
 
     @property

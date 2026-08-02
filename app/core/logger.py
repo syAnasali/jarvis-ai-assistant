@@ -143,6 +143,45 @@ class JarvisLogger:
         """
         self._logger.critical(message, *args, **kwargs)
 
+    def log_event(
+        self,
+        action: str,
+        status: str = "completed",
+        duration_ms: float | None = None,
+        request_id: str | None = None,
+        session_id: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Logs a standardized structured telemetry event."""
+        req_str = f" [Request: {request_id}]" if request_id else ""
+        sess_str = f" [Session: {session_id}]" if session_id else ""
+        dur_str = f" [Duration: {duration_ms:.2f}ms]" if duration_ms is not None else ""
+        meta_str = f" | Metadata: {metadata}" if metadata else ""
+        
+        msg = f"{action} [Status: {status}]{req_str}{sess_str}{dur_str}{meta_str}"
+        self._logger.info(msg)
+
+    def log_error(
+        self,
+        operation: str,
+        error: Exception,
+        request_id: str | None = None,
+        session_id: str | None = None,
+        user_message: str | None = None,
+        metadata: dict[str, Any] | None = None,
+    ) -> None:
+        """Logs a standardized structured error event with developer diagnostics."""
+        req_str = f" [Request: {request_id}]" if request_id else ""
+        sess_str = f" [Session: {session_id}]" if session_id else ""
+        user_str = f" [UserMessage: '{user_message}']" if user_message else ""
+        meta_str = f" | Metadata: {metadata}" if metadata else ""
+        
+        msg = (
+            f"Operation failed: {operation}{req_str}{sess_str}"
+            f" [Exception: {type(error).__name__}: {error}]{user_str}{meta_str}"
+        )
+        self._logger.error(msg)
+
 
 # Initialize default setup
 setup_logger()

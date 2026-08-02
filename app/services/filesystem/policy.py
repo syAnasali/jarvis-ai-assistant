@@ -35,21 +35,55 @@ class FilesystemPolicy:
             for name, path in custom_roots.items():
                 self._roots[name.lower()] = Path(path).resolve()
         else:
-            # Resolve standard active Windows environment roots
+            # Resolve standard active environment roots
             user_profile = os.getenv("USERPROFILE")
-            if user_profile:
-                user_path = Path(user_profile)
-                self._roots["desktop"] = (user_path / "Desktop").resolve()
-                self._roots["documents"] = (user_path / "Documents").resolve()
-                self._roots["downloads"] = (user_path / "Downloads").resolve()
+            home_path = Path(user_profile) if user_profile else Path.home()
+            
+            # Windows shell folders resolution
+            if os.name == "nt":
+                import winreg
+                reg_keys = {
+                    "desktop": "Desktop",
+                    "documents": "Personal",
+                    "downloads": "{374DE290-123F-4565-9164-39C4925E467B}",
+                    "pictures": "My Pictures",
+                    "videos": "My Video",
+                    "music": "My Music",
+                }
+                for key_name, reg_val in reg_keys.items():
+                    try:
+                        with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders") as key:
+                            val, _ = winreg.QueryValueEx(key, reg_val)
+                            self._roots[key_name] = Path(os.path.expandvars(val)).resolve()
+                    except Exception:
+                        try:
+                            with winreg.OpenKey(winreg.HKEY_CURRENT_USER, r"Software\Microsoft\Windows\CurrentVersion\Explorer\Shell Folders") as key:
+                                val, _ = winreg.QueryValueEx(key, reg_val)
+                                self._roots[key_name] = Path(val).resolve()
+                        except Exception:
+                            # Fallback
+                            fallback_dirs = {
+                                "desktop": "Desktop",
+                                "documents": "Documents",
+                                "downloads": "Downloads",
+                                "pictures": "Pictures",
+                                "videos": "Videos",
+                                "music": "Music",
+                            }
+                            self._roots[key_name] = (home_path / fallback_dirs[key_name]).resolve()
             else:
-                # Fallbacks in case USERPROFILE is missing in non-Windows/CI env
-                home = os.getenv("HOME") or os.path.expanduser("~")
-                home_path = Path(home)
+                # Non-Windows fallbacks
                 self._roots["desktop"] = (home_path / "Desktop").resolve()
                 self._roots["documents"] = (home_path / "Documents").resolve()
                 self._roots["downloads"] = (home_path / "Downloads").resolve()
+                self._roots["pictures"] = (home_path / "Pictures").resolve()
+                self._roots["videos"] = (home_path / "Videos").resolve()
+                self._roots["music"] = (home_path / "Music").resolve()
 
+            # Home and Temp and Workspace
+            self._roots["home"] = home_path.resolve()
+            import tempfile
+            self._roots["temp"] = Path(tempfile.gettempdir()).resolve()
             self._roots["workspace"] = Path(os.getcwd()).resolve()
 
     def get_roots(self) -> Dict[str, Path]:

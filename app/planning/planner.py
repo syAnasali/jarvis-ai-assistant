@@ -99,8 +99,9 @@ class LLMTaskPlanner(TaskPlanner):
             parsed_resp = resp_parser.parse_response(gen_result)
             plan = self._parser.parse_plan(parsed_resp.text)
         except Exception as e:
+            raw_text = parsed_resp.text if 'parsed_resp' in locals() else 'None'
             logger.error(f"Failed to parse task plan JSON response: {e}")
-            # Ensure custom planning exceptions propagate directly
+            logger.error(f"Raw response was: {raw_text}")
             raise
 
         duration_ms = (time.perf_counter() - start_time) * 1000

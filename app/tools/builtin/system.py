@@ -16,7 +16,12 @@ class CurrentTimeTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Return the current local date and time."
+        return (
+            "Return the current local date and time.\n"
+            "When to use: Use ONLY when you need to know the current date, time, or timezone.\n"
+            "When NOT to use: NEVER use if the user request has nothing to do with timing or dates.\n"
+            "Realistic examples: get_current_time()"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:
@@ -60,7 +65,12 @@ class SystemInfoTool(BaseTool):
 
     @property
     def description(self) -> str:
-        return "Return basic non-sensitive operating system and Python runtime information."
+        return (
+            "Return basic platform metadata such as OS name, version, and CPU architecture.\n"
+            "When to use: Use ONLY when checking the OS version, Python version, or system architecture.\n"
+            "When NOT to use: NEVER use if you need disk usage space metrics (use 'get_disk_usage' instead).\n"
+            "Realistic examples: get_system_info()"
+        )
 
     @property
     def permission_level(self) -> ToolPermission:

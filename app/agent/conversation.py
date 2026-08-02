@@ -25,6 +25,10 @@ class Conversation:
         """
         self._messages.append(message)
         self._enforce_limit()
+        if message.role.value == "assistant":
+            from app.core.logger import JarvisLogger
+            logger = JarvisLogger.get_logger("conversation")
+            logger.info(f"Final assistant response: {message.content}")
 
     def remove_message(self, message_id: str) -> bool:
         """Removes a message from the log by its unique identifier.

@@ -19,7 +19,10 @@ class GetDiskUsageTool(BaseTool):
     def description(self) -> str:
         return (
             "Retrieve disk space information (total, used, free, and used percentage) "
-            "for a given path directory. Defaults to the system drive."
+            "for a given path directory. Defaults to the system drive.\n"
+            "When to use: Use ONLY when checking available disk space or inspecting storage boundaries.\n"
+            "When NOT to use: NEVER use to check file/directory metadata or size of a specific folder (use 'inspect_path' instead).\n"
+            "Realistic examples: get_disk_usage(path='C:\\')"
         )
 
     @property

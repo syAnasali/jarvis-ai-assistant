@@ -95,7 +95,10 @@ class ListInstalledApplicationsTool(BaseTool):
     def description(self) -> str:
         return (
             "Retrieve a list of installed applications discovered in the Windows registry, "
-            "sorted by name. Includes versions and publishers where available."
+            "sorted by name. Includes versions and publishers where available.\n"
+            "When to use: Use ONLY when you need to see a full list of all programs installed on this computer.\n"
+            "When NOT to use: NEVER use to look for a specific program if you already know its name (use 'find_installed_application' instead). NEVER use to search for folders/files.\n"
+            "Realistic examples: list_installed_applications()"
         )
 
     @property
@@ -154,7 +157,10 @@ class FindInstalledApplicationTool(BaseTool):
     def description(self) -> str:
         return (
             "Search for installed applications using a case-insensitive name query. "
-            "Matches against publisher and application names."
+            "Matches against publisher and application names.\n"
+            "When to use: Use ONLY when searching for a specific installed application by keyword or name.\n"
+            "When NOT to use: NEVER use if you want to launch the application directly (use 'launch_application' or 'resolve_application' instead).\n"
+            "Realistic examples: find_installed_application(query='chrome')"
         )
 
     @property
@@ -231,7 +237,10 @@ class ResolveApplicationTool(BaseTool):
         return (
             "Resolve a user application name query to a trusted launchable application ID. "
             "Returns RESOLVED with the application details, NOT_FOUND if no application matches, "
-            "or AMBIGUOUS with a list of matching candidate applications to ask the user to clarify."
+            "or AMBIGUOUS with a list of matching candidate applications to ask the user to clarify.\n"
+            "When to use: Use ONLY when trying to resolve an application name query to a launchable candidate before launching it.\n"
+            "When NOT to use: NEVER use if you already have a launchable application ID or binary path (use 'launch_application' directly).\n"
+            "Realistic examples: resolve_application(query='notepad')"
         )
 
     @property
@@ -300,8 +309,10 @@ class LaunchApplicationTool(BaseTool):
     @property
     def description(self) -> str:
         return (
-            "Launch a trusted application by its deterministic application ID. "
-            "Requires explicit human confirmation before execution."
+            "Launch a trusted application by its deterministic application ID.\n"
+            "When to use: Use ONLY when you need to start/open an application that has been resolved to a trusted ID.\n"
+            "When NOT to use: NEVER use with an unresolved arbitrary name query (use 'resolve_application' first to get the ID).\n"
+            "Realistic examples: launch_application(application_id='notepad')"
         )
 
     @property

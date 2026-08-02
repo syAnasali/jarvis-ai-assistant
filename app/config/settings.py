@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     ollama_model: str = DEFAULT_OLLAMA_MODEL
     database_path: Path = DATABASE_PATH
     log_level: LogLevel = DEFAULT_LOG_LEVEL
+    debug_mode: bool = False
     voice_name: str = "en-US-Neural"
     hotkey: str = "ctrl+alt+j"
     conversation_context_max_messages: int = 24
@@ -37,13 +38,15 @@ class Settings(BaseSettings):
     planning_enabled: bool = True
     planning_max_steps: int = 8
     planning_max_observation_characters: int = 16000
+    planning_max_retries: int = 1
+    llm_timeout: float = 60.0
 
     tool_default_list_limit: int = 100
     tool_max_list_limit: int = 500
     tool_max_text_file_bytes: int = 2097152
     tool_default_text_characters: int = 12000
     tool_max_text_characters: int = 50000
-    approval_timeout_seconds: int = 120
+    approval_timeout_seconds: int | None = None
 
     application_resolution_max_candidates: int = 10
     application_discovery_max_entries: int = 2000
@@ -90,10 +93,12 @@ class Settings(BaseSettings):
             raise ValueError("tool_default_text_characters must be positive")
         if values.get("tool_max_text_characters", 50000) < values.get("tool_default_text_characters", 12000):
             raise ValueError("tool_max_text_characters must be >= tool_default_text_characters")
-        if values.get("approval_timeout_seconds", 120) <= 0:
-            raise ValueError("approval_timeout_seconds must be positive")
-        if values.get("approval_timeout_seconds", 120) > 3600:
-            raise ValueError("approval_timeout_seconds cannot exceed 3600 seconds")
+        timeout = values.get("approval_timeout_seconds")
+        if timeout is not None:
+            if timeout <= 0:
+                raise ValueError("approval_timeout_seconds must be positive")
+            if timeout > 3600:
+                raise ValueError("approval_timeout_seconds cannot exceed 3600 seconds")
         if values.get("application_resolution_max_candidates", 10) <= 0:
             raise ValueError("application_resolution_max_candidates must be positive")
         if values.get("application_discovery_max_entries", 2000) <= 0:

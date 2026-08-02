@@ -62,8 +62,20 @@ jarvis-ai-assistant/
 │   │   └── __init__.py               # Reserved for future implementation
 │   ├── tools/                        # Agent execution tools (reserved)
 │   │   └── __init__.py               # Reserved for future implementation
-│   ├── ui/                           # Graphical Interface modules (reserved)
-│   │   └── __init__.py               # Reserved for future implementation
+│   ├── ui/                           # PySide6 Desktop GUI frontend adapter
+│   │   ├── __init__.py               # Package init and exports
+│   │   ├── app.py                    # MainWindow assembly and controller thread coordinator
+│   │   ├── theme.py                  # Dark stylesheet CSS theme configuration
+│   │   ├── threads.py                # Background AgentWorker and VoiceWorker QThreads
+│   │   ├── tray.py                   # System tray icon and context menus
+│   │   └── widgets/                  # Modular component widgets
+│   │       ├── approval_card.py      # Confirmation tool review card with countdown
+│   │       ├── chat_view.py          # Scrollable conversation with markdown and copyable code
+│   │       ├── settings_dialog.py    # Settings dialog form (model, voice, log levels)
+│   │       ├── sidebar.py            # Sidebar state, database metrics, and pending actions
+│   │       ├── status_bar.py         # Latency, scheduler queue, and lifecycle state status bar
+│   │       ├── timeline.py           # execution activity timeline event logger
+│   │       └── top_bar.py            # Branding header, active model, and voice level indicator
 │   ├── utils/                        # Shared helper utilities
 │   │   ├── __init__.py
 │   │   ├── banner.py                 # Console banner text renderer
@@ -186,10 +198,24 @@ Provides shared utilities.
 - **`id_generator.py`**: Centralizes unique ID generation for messages, requests, responses, and memories.
 - **`banner.py`**: Houses console startup and shutdown banners.
 
+### `app/ui/`
+Implements the PySide6 professional desktop user interface.
+- **`app.py`**: MainWindow orchestrator, thread signaling, status monitoring, and layout.
+- **`theme.py`**: Dark style sheet configurations, colors, and layout metrics.
+- **`threads.py`**: Asynchronous `AgentWorker` and `VoiceWorker` background runners.
+- **`tray.py`**: System tray integration, tooltip, contextual menus, and minimize behavior.
+- **`widgets/`**: Subdirectory containing modular GUI widgets:
+  - `top_bar.py`: Branding, active model, running status, and microphone level.
+  - `chat_view.py`: Conversation bubbles supporting copyable code blocks and Markdown.
+  - `sidebar.py`: State panels, counts, database metrics, and active pending list.
+  - `status_bar.py`: Provider info, execution latency, and scheduler queue size.
+  - `timeline.py`: Event timeline logs with timezone-aware timestamps.
+  - `approval_card.py`: Review card for blocked confirmation tools with countdown timer.
+  - `settings_dialog.py`: Configurations settings editor (Ollama, voice, logs, tray behavior).
+
 ### Reserved Packages (Reserved for Future Implementation)
 The following directories are empty placeholder packages (except for `__init__.py`) reserved for future phases of the project roadmap:
 - **`app/prompts/`**: Externalized prompt files.
-- **`app/ui/`**: Desktop GUI views and window widgets (PySide6).
 
 ---
 
@@ -220,4 +246,5 @@ The following directories are empty placeholder packages (except for `__init__.p
   - **`test_local_tts.py`**: Speak text locally using pyttsx3.
   - **`test_voice_runtime.py`**: E2E voice runtime request processing and speech synthesis.
   - **`test_voice_approval_safety.py`**: Verify that voice-origin requests trigger WAITING_APPROVAL block and cannot auto-approve.
-- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, local capability tools, filesystem policy/resolver/service, desktop interaction subsystem (`test_desktop_service.py`), and the voice subsystem (`test_voice_models.py`, `test_voice_state.py`, `test_voice_capture.py`, `test_voice_vad.py`, `test_voice_stt.py`, `test_voice_tts.py`, `test_voice_manager.py`, `test_voice_runtime.py`).
+  - **`test_ui_diagnostics.py`**: Dry-run tests for GUI thread responsiveness, slots, signals, voice, and system tray.
+- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, local capability tools, filesystem policy/resolver/service, desktop interaction subsystem (`test_desktop_service.py`), the voice subsystem (`test_voice_models.py`, `test_voice_state.py`, `test_voice_capture.py`, `test_voice_vad.py`, `test_voice_stt.py`, `test_voice_tts.py`, `test_voice_manager.py`, `test_voice_runtime.py`), and the desktop UI subsystem (`test_ui_widgets.py`).

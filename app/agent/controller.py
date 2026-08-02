@@ -22,6 +22,7 @@ from app.memory.interfaces import MemoryRetriever
 from app.memory.context import MemoryContextBuilder
 from app.memory.coordinator import MemoryWriteCoordinator
 from app.config.settings import settings
+from app.core.tracing import RequestTracer
 
 from app.planning.models import ExecutionMode
 from app.planning.interfaces import TaskPlanner
@@ -29,6 +30,13 @@ from app.planning.router import ExecutionRouter
 from app.planning.validator import PlanValidator
 from app.planning.executor import TaskExecutor
 from app.approval.models import PendingActionStatus
+from app.core.exceptions import (
+    LLMError,
+    PlanExecutionError,
+    StepExecutionError,
+    PlanValidationError,
+    ToolValidationError
+)
 
 logger = JarvisLogger.get_logger("agent_controller")
 
@@ -127,7 +135,34 @@ class AgentController:
         tool_exec = getattr(agent_runner, "_executor", None)
 
         self._plan_validator = validator or PlanValidator(reg)
-        self._task_executor = executor or TaskExecutor(llm_manager, reg, tool_exec, self._plan_validator)
+        self._task_executor = executor or TaskExecutor(
+            llm_manager=llm_manager,
+            registry=reg,
+            tool_executor=tool_exec,
+            validator=self._plan_validator,
+            planner=self._task_planner
+        )
+
+    def _log_debug_summary(
+        self,
+        tracer: RequestTracer,
+        is_planned: bool = False,
+        task_plan: Any = None,
+        memory_matches_ids: tuple = (),
+        selected_tools: list = ()
+    ) -> None:
+        """Logs detailed execution timeline and performance diagnostics when debug_mode is enabled."""
+        if not settings.debug_mode:
+            return
+        
+        logger.info("\n" + tracer.get_performance_summary())
+        logger.info(f"[Debug] Execution Timeline: {tracer.get_timeline_dict()}")
+        if is_planned and task_plan is not None:
+            logger.info(f"[Debug] Planner Reasoning Summary: plan_id={task_plan.plan_id}, goal='{task_plan.goal}', steps={len(task_plan.steps)}")
+        if memory_matches_ids:
+            logger.info(f"[Debug] Selected Memories: {memory_matches_ids}")
+        if selected_tools:
+            logger.info(f"[Debug] Selected Tools: {selected_tools}")
 
     def process_request(self, request: AgentRequest, approval_action_id: str | None = None) -> AgentResponse:
         """Processes an incoming user request using the active context.
@@ -140,7 +175,15 @@ class AgentController:
             AgentResponse: The resulting agent response.
         """
         start_time = time.perf_counter()
+        tracer = RequestTracer(request.request_id, self.active_session_id)
+        tracer.start_stage("Request Started")
         logger.info(f"Request received: ID={request.request_id} (approval_id={approval_action_id})")
+        tracer.end_stage("Request Started")
+
+        selected_tools = []
+        retries = 0
+        validation_failures = 0
+        recovery_path = "none"
 
         try:
             # Check if we are handling an approval or rejection resumption
@@ -152,6 +195,7 @@ class AgentController:
                         text="Error: Approved action not found.",
                         success=False
                     )
+                logger.info(f"Resuming execution: action_id={approval_action_id}")
 
                 if action.status == PendingActionStatus.REJECTED:
                     # Clear active planned execution state
@@ -176,6 +220,7 @@ class AgentController:
                     if self.conversation_manager and self.active_session_id:
                         self.conversation_manager.add_message(self.active_session_id, assistant_message)
                     self.conversation.add_message(assistant_message)
+                    logger.info("Assistant resumed")
                     return agent_response
 
                 if action.status == PendingActionStatus.APPROVED:
@@ -188,6 +233,10 @@ class AgentController:
                             approval_action_id=approval_action_id,
                             previous_observations=self._active_observations
                         )
+                        logger.info("Assistant resumed")
+                        selected_tools.extend(list(set(s.tool_name for s in self._active_plan.steps if s.tool_name)))
+                        retries = exec_result.metrics.metadata.get("retries", 0)
+                        validation_failures = exec_result.metrics.metadata.get("validation_failures", 0)
                         
                         from app.planning.models import PlanStatus
                         if exec_result.plan_status == PlanStatus.WAITING_APPROVAL:
@@ -259,11 +308,13 @@ class AgentController:
                     else:
                         # Direct mode approved execution
                         logger.info("Executing approved direct action...")
+                        selected_tools.append(action.tool_name)
                         from app.agent.models import ToolCall
                         tool_call = ToolCall(tool_name=action.tool_name, arguments=action.arguments)
                         
                         tool_exec = getattr(self._runner, "_executor")
                         tool_result = tool_exec.execute(tool_call, approval_action_id=approval_action_id)
+                        logger.info("Assistant resumed")
                         
                         import json
                         tool_content = json.dumps(tool_result.output) if tool_result.success else json.dumps({"error": tool_result.error})
@@ -341,12 +392,17 @@ class AgentController:
                         return agent_response
 
             # Standard non-resumption flow
+            tracer.start_stage("Conversation Formatting")
+            fmt_start = time.perf_counter()
             plan, formatted_messages = self._prepare_request(request)
+            tracer.record_metric("prompt_construction_duration_ms", (time.perf_counter() - fmt_start) * 1000.0)
+            tracer.end_stage("Conversation Formatting")
 
             # Heuristic Routing decision
             decision = self._router.route(request)
 
             # Memory retrieval logic (runs for both direct and planned paths)
+            tracer.start_stage("Memory Retrieval")
             memory_matches_ids = ()
             memory_duration_ms = 0.0
             memory_context = ""
@@ -358,6 +414,7 @@ class AgentController:
                     memory_matches_ids = tuple(m.memory.memory_id for m in ret_result.matches)
                     memory_context = self._context_builder.build(list(ret_result.matches))
                     memory_duration_ms = (time.perf_counter() - mem_start) * 1000
+                    tracer.record_metric("memory_retrieval_latency_ms", memory_duration_ms)
                     
                     logger.info(
                         f"Memory retrieval completed: "
@@ -367,8 +424,10 @@ class AgentController:
                     )
                     logger.debug(f"Selected memory IDs: {memory_matches_ids}")
                 except Exception as me:
+                    tracer.end_stage("Memory Retrieval")
                     logger.error(f"Memory retrieval failed: {me}")
                     raise
+            tracer.end_stage("Memory Retrieval")
 
             exec_metrics = None
             is_planned = settings.planning_enabled and decision.mode == ExecutionMode.PLANNED
@@ -386,19 +445,36 @@ class AgentController:
                 history_for_planner = formatted_messages[:-1] if formatted_messages else []
 
                 # Formulate Plan
+                tracer.start_stage("Planning")
+                plan_start = time.perf_counter()
                 task_plan = self._task_planner.create_plan(
                     request=request,
                     available_tools=available_tools,
                     conversation_history=history_for_planner,
                     memory_context=memory_context
                 )
+                plan_dur = (time.perf_counter() - plan_start) * 1000.0
+                tracer.record_metric("planner_latency_ms", plan_dur)
+                tracer.end_stage("Planning")
+
+                tracer.start_stage("Tool Selection")
+                tracer.end_stage("Tool Selection")
 
                 # Execute Plan step-by-step
+                tracer.start_stage("Tool Execution")
+                tool_start = time.perf_counter()
                 exec_result = self._task_executor.execute(
                     plan=task_plan,
                     original_request_text=request.text,
                     routing_confidence=decision.confidence
                 )
+                tool_dur = (time.perf_counter() - tool_start) * 1000.0
+                tracer.record_metric("tool_execution_duration_ms", tool_dur)
+                tracer.end_stage("Tool Execution")
+
+                selected_tools.extend(list(set(s.tool_name for s in task_plan.steps if s.tool_name)))
+                retries = exec_result.metrics.metadata.get("retries", 0)
+                validation_failures = exec_result.metrics.metadata.get("validation_failures", 0)
 
                 from app.planning.models import PlanStatus
                 if exec_result.plan_status == PlanStatus.WAITING_APPROVAL:
@@ -467,14 +543,26 @@ class AgentController:
                 # Execute via existing AgentRunner or Executor
                 if plan.use_llm and self._runner is not None:
                     logger.info("Executing via AgentRunner action loop...")
+                    tracer.start_stage("LLM Call")
+                    llm_start = time.perf_counter()
                     run_result = self._runner.run(request, formatted_messages, memory_context=memory_context)
+                    llm_dur = (time.perf_counter() - llm_start) * 1000.0
+                    tracer.record_metric("llm_latency_ms", llm_dur)
+                    tracer.end_stage("LLM Call")
+
+                    selected_tools.extend(run_result.requested_tools)
                     
                     # Merge the memory retrieval diagnostics into execution metrics
                     from dataclasses import replace, asdict
                     exec_metrics = replace(
                         run_result.execution_metrics,
                         memory_matches=memory_matches_ids,
-                        memory_retrieval_duration_ms=memory_duration_ms
+                        memory_retrieval_duration_ms=memory_duration_ms,
+                        planner_latency_ms=tracer.metrics.get("planner_latency_ms", 0.0),
+                        prompt_construction_duration_ms=tracer.metrics.get("prompt_construction_duration_ms", 0.0),
+                        llm_latency_ms=tracer.metrics.get("llm_latency_ms", 0.0),
+                        tool_execution_duration_ms=tracer.metrics.get("tool_execution_duration_ms", 0.0),
+                        timeline_stages=tracer.get_timeline_dict()
                     )
                     
                     response_metadata = {
@@ -482,6 +570,8 @@ class AgentController:
                         "execution_metrics": asdict(exec_metrics)
                     }
                     if run_result.confirmation_required:
+                        tracer.start_stage("Approval Wait")
+                        tracer.end_stage("Approval Wait")
                         response_metadata["confirmation_required"] = True
                         response_metadata["pending_action_id"] = run_result.pending_action_id
                         response_metadata["tool_name"] = run_result.requested_tools[0] if run_result.requested_tools else ""
@@ -499,7 +589,9 @@ class AgentController:
                 else:
                     logger.info("Executing via Executor...")
                     # Fallback to direct executor
+                    tracer.start_stage("LLM Call")
                     raw_response = self._executor.execute(plan, formatted_messages)
+                    tracer.end_stage("LLM Call")
                     agent_response = self._parser.parse_response(raw_response)
                     
                     # Merge metadata
@@ -513,7 +605,13 @@ class AgentController:
                         metadata=new_metadata
                     )
 
+            # Response Generation
+            tracer.start_stage("Response Generation")
+            tracer.end_stage("Response Generation")
+
             # Create and store assistant Message
+            tracer.start_stage("Conversation Saved")
+            save_start = time.perf_counter()
             assistant_message = Message(
                 id=generate_message_id(),
                 role=MessageRole.ASSISTANT,
@@ -524,9 +622,14 @@ class AgentController:
             if self.conversation_manager and self.active_session_id:
                 self.conversation_manager.add_message(self.active_session_id, assistant_message)
             self.conversation.add_message(assistant_message)
+            save_dur = (time.perf_counter() - save_start) * 1000.0
+            tracer.record_metric("conversation_persistence_duration_ms", save_dur)
+            tracer.end_stage("Conversation Saved")
             logger.info("Assistant response stored.")
 
             # Memory writing scheduled asynchronously in the background
+            tracer.start_stage("Memory Extraction")
+            mem_write_start = time.perf_counter()
             if self._coordinator is not None:
                 try:
                     scheduled = self._coordinator.submit(request.text)
@@ -536,26 +639,102 @@ class AgentController:
                         logger.debug("Memory extraction task was not scheduled (empty input, queue full, or coordinator shut down).")
                 except Exception as e:
                     logger.error(f"Failed to schedule memory extraction task (isolated): {e}")
+            tracer.record_metric("memory_write_latency_ms", (time.perf_counter() - mem_write_start) * 1000.0)
+            tracer.end_stage("Memory Extraction")
 
-            duration_ms = (time.perf_counter() - start_time) * 1000
+            tracer.start_stage("Completed")
+            tracer.end_stage("Completed")
+            duration_ms = tracer.finalize()
             
-            if exec_metrics is not None:
-                logger.info(
-                    f"Request completed: "
-                    f"request_id={request.request_id}, "
-                    f"total_duration_ms={duration_ms:.2f}, "
-                    f"agent_iterations={exec_metrics.iterations}, "
-                    f"model_calls={exec_metrics.model_calls}, "
-                    f"tool_calls={exec_metrics.tool_calls}"
-                )
-            else:
-                logger.info(f"Request completed. Execution time: {duration_ms:.2f} ms")
-
+            self._log_debug_summary(
+                tracer,
+                is_planned=is_planned,
+                task_plan=task_plan if 'task_plan' in locals() else None,
+                memory_matches_ids=memory_matches_ids if 'memory_matches_ids' in locals() else (),
+                selected_tools=selected_tools
+            )
+            
+            logger.info(
+                f"Request completed: "
+                f"request_id={request.request_id}, "
+                f"selected_tools={selected_tools}, "
+                f"retries={retries}, "
+                f"validation_failures={validation_failures}, "
+                f"execution_time={duration_ms:.2f} ms, "
+                f"recovery_path={recovery_path}"
+            )
             return agent_response
         except Exception as e:
             duration_ms = (time.perf_counter() - start_time) * 1000
-            logger.error(f"Error processing request: {e}. Execution time: {duration_ms:.2f} ms")
-            raise
+            error_message = str(e)
+            
+            # Let generic RuntimeError propagate (except those matching specific scenarios like rejected approvals)
+            if isinstance(e, RuntimeError) and "rejected" not in error_message.lower():
+                raise
+            
+            # Map exception types to user-friendly messages and recovery paths
+            if "Ollama" in error_message or "Connection" in error_message or "ConnectError" in error_message:
+                friendly_text = "I'm having trouble connecting to the local Ollama service. Please check that Ollama is running and configured correctly."
+                recovery_path = "ollama_connection_fallback"
+            elif "Permission" in error_message or "WinError 32" in error_message or "WinError 5" in error_message:
+                friendly_text = f"A filesystem permission error occurred: {error_message}. I couldn't access or modify the file."
+                recovery_path = "permission_denied_fallback"
+            elif "FileNotFound" in error_message or "WinError 2" in error_message:
+                friendly_text = f"File not found error: {error_message}. Please check that the target file or folder exists."
+                recovery_path = "file_not_found_fallback"
+            elif "rejected" in error_message.lower():
+                friendly_text = "The requested tool call was rejected by the user."
+                recovery_path = "rejected_approval_fallback"
+            elif isinstance(e, TimeoutError) or "timeout" in error_message.lower() or "timed out" in error_message.lower():
+                friendly_text = "The operation timed out. Please try again or check the background services."
+                recovery_path = "timeout_fallback"
+            else:
+                friendly_text = f"An unexpected runtime error occurred: {error_message}."
+                recovery_path = "generic_error_fallback"
+
+            logger.error(
+                f"Request failed: "
+                f"request_id={request.request_id}, "
+                f"selected_tools={selected_tools}, "
+                f"retries={retries}, "
+                f"validation_failures={validation_failures}, "
+                f"execution_time={duration_ms:.2f} ms, "
+                f"recovery_path={recovery_path}, "
+                f"error={error_message}"
+            )
+
+            agent_response = AgentResponse(
+                response_id=generate_response_id(),
+                text=friendly_text,
+                tool_calls=[],
+                success=False,
+                metadata={
+                    "request_id": request.request_id,
+                    "selected_tools": selected_tools,
+                    "retries": retries,
+                    "validation_failures": validation_failures,
+                    "execution_time_ms": duration_ms,
+                    "recovery_path": recovery_path,
+                    "error": error_message
+                }
+            )
+
+            # Try to store in conversation history
+            try:
+                assistant_message = Message(
+                    id=generate_message_id(),
+                    role=MessageRole.ASSISTANT,
+                    content=agent_response.text,
+                    timestamp=datetime.now(timezone.utc),
+                    metadata=sanitize_for_json(agent_response.metadata),
+                )
+                if self.conversation_manager and self.active_session_id:
+                    self.conversation_manager.add_message(self.active_session_id, assistant_message)
+                self.conversation.add_message(assistant_message)
+            except Exception as history_error:
+                logger.error(f"Failed to write error response to conversation history: {history_error}")
+
+            return agent_response
 
     def process_request_stream(self, request: AgentRequest, approval_action_id: str | None = None) -> Iterator[str]:
         """Processes an incoming request as a stream of text chunks.
@@ -580,6 +759,7 @@ class AgentController:
                 if not action:
                     yield "Error: Approved action not found."
                     return
+                logger.info(f"Resuming execution: action_id={approval_action_id}")
 
                 if action.status == PendingActionStatus.REJECTED:
                     self._active_plan = None
@@ -604,6 +784,7 @@ class AgentController:
                     if self.conversation_manager and self.active_session_id:
                         self.conversation_manager.add_message(self.active_session_id, assistant_message)
                     self.conversation.add_message(assistant_message)
+                    logger.info("Assistant resumed")
                     return
 
                 if action.status == PendingActionStatus.APPROVED:
@@ -656,6 +837,7 @@ class AgentController:
                         if self.conversation_manager and self.active_session_id:
                             self.conversation_manager.add_message(self.active_session_id, assistant_message)
                         self.conversation.add_message(assistant_message)
+                        logger.info("Assistant resumed")
                         return
                     
                     else:
@@ -665,6 +847,7 @@ class AgentController:
                         tool_call = ToolCall(tool_name=action.tool_name, arguments=action.arguments)
                         tool_exec = getattr(self._runner, "_executor")
                         tool_result = tool_exec.execute(tool_call, approval_action_id=approval_action_id)
+                        logger.info("Assistant resumed")
                         
                         import json
                         tool_content = json.dumps(tool_result.output) if tool_result.success else json.dumps({"error": tool_result.error})
