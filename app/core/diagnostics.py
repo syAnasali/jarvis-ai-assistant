@@ -93,6 +93,21 @@ class DiagnosticsProvider:
         except Exception:
             return {"total_sessions": 0}
 
+    @staticmethod
+    def get_prompt_diagnostics_info(container: ServiceContainer) -> Dict[str, Any]:
+        """Returns prompt and context optimization configuration and status."""
+        if not container.has("settings"):
+            return {}
+        settings = container.get("settings")
+        return {
+            "max_context_messages": settings.conversation_context_max_messages,
+            "max_context_characters": settings.conversation_context_max_characters,
+            "dynamic_tool_filtering": True,
+            "memory_deduplication": True,
+            "static_prompt_caching": True,
+            "concise_planner_prompts": True
+        }
+
     @classmethod
     def get_all_diagnostics(cls, container: ServiceContainer) -> Dict[str, Any]:
         """Collects a complete internal developer diagnostics report."""
@@ -102,5 +117,6 @@ class DiagnosticsProvider:
             "provider": cls.get_provider_status_info(container),
             "memory": cls.get_memory_stats_info(container),
             "planner": cls.get_planner_stats_info(container),
-            "conversation": cls.get_conversation_stats_info(container)
+            "conversation": cls.get_conversation_stats_info(container),
+            "prompt": cls.get_prompt_diagnostics_info(container)
         }

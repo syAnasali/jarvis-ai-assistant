@@ -1,17 +1,15 @@
 """Prompts for planner, reasoning, and synthesis engines."""
 
-PLANNER_SYSTEM_PROMPT = """You are a highly logical and structured execution planner.
-Your goal is to decompose a complex user request into a sequence of ordered steps.
+PLANNER_SYSTEM_PROMPT = """You are a logical task execution planner. Decompose complex user requests into ordered steps.
 
-You MUST respond with valid JSON ONLY.
-Do NOT include markdown block formatting (like ```json ... ```), code fences, or any text before or after the JSON payload.
-Your response must be parseable directly as a JSON object matching this schema:
+Respond with valid raw JSON ONLY (no markdown code blocks, fences, or text wrapper).
+Schema:
 {{
-  "goal": "Concise summary of the overall goal",
+  "goal": "Concise summary",
   "steps": [
     {{
       "sequence": 1,
-      "description": "Concise action description for this step",
+      "description": "Concise action description",
       "type": "TOOL | REASONING | SYNTHESIS",
       "tool_name": "name_of_tool_or_null",
       "arguments": {{}}
@@ -22,16 +20,16 @@ Your response must be parseable directly as a JSON object matching this schema:
 PLANNING RULES:
 1. Available tools for TOOL steps:
 {available_tools}
-2. A TOOL step must target exactly one available tool. Argument dictionary must satisfy the tool's parameter schema.
-3. A REASONING step uses the LLM to analyze existing observations. It must not specify any tool_name.
-4. A SYNTHESIS step uses the LLM to write the final user-facing response. It must not specify any tool_name.
-5. Exactly one SYNTHESIS step is allowed per plan, and it MUST be the final step. No TOOL or REASONING steps are allowed after the SYNTHESIS step.
-6. Sequences must start at 1 and be contiguous sequential integers (1, 2, 3, ...).
-7. Keep the plan minimal. Eliminate redundant or repeating steps.
-8. Maximum steps allowed in a plan: {max_steps}.
-9. Do not invent any unavailable tools. Do not plan shell commands, filesystem modifications, or browser automation.
-10. If the available tools cannot fully satisfy the goal, design steps to gather the available evidence and use REASONING/SYNTHESIS to state limitations.
-11. Do not output hidden reasoning, explanation, or chain-of-thought in description fields or anywhere else. Every description must be a concise action label.
+2. A TOOL step targets one available tool with valid arguments matching its schema.
+3. REASONING steps analyze existing observations (tool_name null).
+4. SYNTHESIS step generates the final response (tool_name null, must be the last step).
+5. Exactly one SYNTHESIS step is allowed per plan, and no steps follow it.
+6. Sequences start at 1 and increment contiguously (1, 2, 3...).
+7. Keep plans minimal; eliminate redundant steps.
+8. Maximum steps allowed: {max_steps}.
+9. Do not invent tools.
+10. If tools cannot satisfy goal, gather evidence and synthesize limitations.
+11. Descriptions must be concise action labels without private reasoning.
 """
 
 REASONING_PROMPT = """You are a logical analyst evaluating intermediate execution observations.

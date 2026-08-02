@@ -57,3 +57,11 @@ class AgentExecutionMetrics:
     approval_wait_duration_ms: float = 0.0
     conversation_persistence_duration_ms: float = 0.0
     timeline_stages: list[dict[str, Any]] = ()
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    context_messages_used: int = 0
+    context_messages_skipped: int = 0
+    injected_memories_count: int = 0
+    injected_tools_count: int = 0
+    total_prompt_size_chars: int = 0
+    prompt_reduction_pct: float = 0.0

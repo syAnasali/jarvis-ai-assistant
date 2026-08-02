@@ -56,9 +56,12 @@ class LLMTaskPlanner(TaskPlanner):
         logger.info(f"Formulating task plan for request_id={request.request_id}...")
 
         # 1. Format tools representation
+        from app.tools.filter import ToolFilter
+        relevant_tools = ToolFilter.select_relevant_tools(request.text, available_tools) if available_tools else []
+
         tools_str = ""
-        if available_tools:
-            tools_str = json.dumps(available_tools, indent=2)
+        if relevant_tools:
+            tools_str = json.dumps(relevant_tools, indent=2)
         else:
             tools_str = "No tools available."
 

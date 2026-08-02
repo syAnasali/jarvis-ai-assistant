@@ -149,13 +149,25 @@ class AgentController:
         is_planned: bool = False,
         task_plan: Any = None,
         memory_matches_ids: tuple = (),
-        selected_tools: list = ()
+        selected_tools: list = (),
+        messages_used: int = 0,
+        messages_skipped: int = 0,
+        prompt_chars: int = 0,
+        unoptimized_baseline_chars: int = 0
     ) -> None:
         """Logs detailed execution timeline and performance diagnostics when debug_mode is enabled."""
         if not settings.debug_mode:
             return
         
         logger.info("\n" + tracer.get_performance_summary())
+        logger.info("\n" + tracer.get_prompt_diagnostics_report(
+            messages_used=messages_used,
+            messages_skipped=messages_skipped,
+            memory_count=len(memory_matches_ids),
+            tool_count=len(selected_tools),
+            prompt_chars=prompt_chars,
+            unoptimized_baseline_chars=unoptimized_baseline_chars
+        ))
         logger.info(f"[Debug] Execution Timeline: {tracer.get_timeline_dict()}")
         if is_planned and task_plan is not None:
             logger.info(f"[Debug] Planner Reasoning Summary: plan_id={task_plan.plan_id}, goal='{task_plan.goal}', steps={len(task_plan.steps)}")
@@ -646,12 +658,29 @@ class AgentController:
             tracer.end_stage("Completed")
             duration_ms = tracer.finalize()
             
+            # Calculate prompt reduction metrics
+            fmt_chars = 0
+            if 'formatted_messages' in locals() and isinstance(formatted_messages, list):
+                for m in formatted_messages:
+                    if isinstance(m, dict):
+                        fmt_chars += len(str(m.get("content", "")))
+            mem_chars = len(memory_context) if ('memory_context' in locals() and isinstance(memory_context, str)) else 0
+            from app.ai.prompts import PromptManager
+            prompt_chars = fmt_chars + mem_chars + len(PromptManager().system_prompt())
+            # Baseline assumes all 22 tools (~4500 chars) + full unstripped history
+            all_schemas_chars = 4500
+            unoptimized_baseline_chars = prompt_chars + all_schemas_chars
+
             self._log_debug_summary(
                 tracer,
                 is_planned=is_planned,
                 task_plan=task_plan if 'task_plan' in locals() else None,
                 memory_matches_ids=memory_matches_ids if 'memory_matches_ids' in locals() else (),
-                selected_tools=selected_tools
+                selected_tools=selected_tools,
+                messages_used=getattr(self, '_last_messages_used', 0),
+                messages_skipped=getattr(self, '_last_messages_skipped', 0),
+                prompt_chars=prompt_chars,
+                unoptimized_baseline_chars=unoptimized_baseline_chars
             )
             
             logger.info(
@@ -1146,10 +1175,19 @@ class AgentController:
         # Use MessageFormatter to get payload ready
         logger.info("Formatting started.")
         history = self.conversation.get_history()
+        self._last_messages_used = len(history)
+        self._last_messages_skipped = 0
         if self.context_policy:
-            history = self.context_policy.select_history(history)
+            try:
+                res = self.context_policy.select_history_with_diagnostics(history)
+                if isinstance(res, tuple) and len(res) == 3:
+                    history, self._last_messages_used, self._last_messages_skipped = res
+                else:
+                    history = self.context_policy.select_history(history)
+            except Exception:
+                history = self.context_policy.select_history(history)
         formatted_messages = self._formatter.format_history(history)
-        logger.info("Conversation formatted.")
+        logger.info(f"Conversation formatted: used={self._last_messages_used}, skipped={self._last_messages_skipped}.")
 
         return plan, formatted_messages
 

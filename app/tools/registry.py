@@ -86,3 +86,16 @@ class ToolRegistry:
             List[Dict[str, Any]]: List of tool schemas.
         """
         return [tool.get_schema() for tool in self._tools.values()]
+
+    def get_relevant_schemas(self, query: str) -> List[Dict[str, Any]]:
+        """Returns schema specifications for tools relevant to the user query.
+
+        Args:
+            query: The user query string.
+
+        Returns:
+            List[Dict[str, Any]]: Filtered list of relevant tool schemas.
+        """
+        all_schemas = self.get_schemas()
+        from app.tools.filter import ToolFilter
+        return ToolFilter.select_relevant_tools(query, all_schemas)

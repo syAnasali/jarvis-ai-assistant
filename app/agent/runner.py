@@ -79,7 +79,7 @@ class AgentRunner:
         all_requested_tools = []
         iteration_metrics_list: List[AgentIterationMetrics] = []
 
-        schemas = self._registry.get_schemas()
+        schemas = self._registry.get_relevant_schemas(request.text)
 
         # Setup working messages following the preferred system-context order
         working_messages = []
@@ -247,7 +247,7 @@ class AgentRunner:
         all_requested_tools = []
         iteration_metrics_list: List[AgentIterationMetrics] = []
 
-        schemas = self._registry.get_schemas()
+        schemas = self._registry.get_relevant_schemas(request.text)
 
         # Setup working messages following the preferred system-context order
         working_messages = []

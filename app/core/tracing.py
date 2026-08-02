@@ -110,6 +110,44 @@ class RequestTracer:
         ]
         return "\n".join(lines)
 
+    def get_prompt_diagnostics_report(
+        self,
+        messages_used: int = 0,
+        messages_skipped: int = 0,
+        memory_count: int = 0,
+        tool_count: int = 0,
+        prompt_chars: int = 0,
+        unoptimized_baseline_chars: int = 0
+    ) -> str:
+        """Generates a prompt diagnostics report.
+
+        Args:
+            messages_used: Count of conversation messages used.
+            messages_skipped: Count of conversation messages skipped/trimmed.
+            memory_count: Count of memories injected.
+            tool_count: Count of tool schemas injected.
+            prompt_chars: Total character length of active prompt.
+            unoptimized_baseline_chars: Baseline prompt character size before optimization.
+
+        Returns:
+            str: Formatted Prompt Diagnostics Report.
+        """
+        estimated_tokens = max(1, prompt_chars // 4)
+        reduction_pct = 0.0
+        if unoptimized_baseline_chars > 0 and unoptimized_baseline_chars > prompt_chars:
+            reduction_pct = ((unoptimized_baseline_chars - prompt_chars) / unoptimized_baseline_chars) * 100.0
+
+        lines = [
+            f"=== Prompt Diagnostics Report [Request ID: {self.request_id}] ===",
+            f"  Conversation Messages Used:     {messages_used}",
+            f"  Conversation Messages Skipped:  {messages_skipped}",
+            f"  Injected Memories Count:        {memory_count}",
+            f"  Injected Tool Schemas Count:    {tool_count}",
+            f"  Total Prompt Size:              {prompt_chars} chars (~{estimated_tokens} tokens)",
+            f"  Prompt Reduction vs Baseline:   {reduction_pct:.1f}%",
+        ]
+        return "\n".join(lines)
+
     def get_timeline_dict(self) -> List[Dict[str, Any]]:
         """Returns a list representation of all recorded timeline stages."""
         return [
