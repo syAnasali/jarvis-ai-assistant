@@ -108,6 +108,27 @@ class DiagnosticsProvider:
             "concise_planner_prompts": True
         }
 
+    @staticmethod
+    def get_recovery_diagnostics_info(container: ServiceContainer) -> Dict[str, Any]:
+        """Returns runtime reliability and recovery diagnostics."""
+        recovery_info = {
+            "retry_count": 0,
+            "recovery_success": 0,
+            "provider_reconnects": 0,
+            "timeouts": 0,
+            "cancellations": 0
+        }
+        if container.has("llm_manager"):
+            llm_manager = container.get("llm_manager")
+            recovery_info["retry_count"] = getattr(llm_manager, "retry_count", 0)
+            recovery_info["recovery_success"] = getattr(llm_manager, "recovery_success_count", 0)
+            recovery_info["provider_reconnects"] = getattr(llm_manager, "provider_reconnect_count", 0)
+        if container.has("tool_executor"):
+            executor = container.get("tool_executor")
+            recovery_info["timeouts"] = getattr(executor, "timeouts_count", 0)
+            recovery_info["cancellations"] = getattr(executor, "cancellations_count", 0)
+        return recovery_info
+
     @classmethod
     def get_all_diagnostics(cls, container: ServiceContainer) -> Dict[str, Any]:
         """Collects a complete internal developer diagnostics report."""
@@ -118,5 +139,6 @@ class DiagnosticsProvider:
             "memory": cls.get_memory_stats_info(container),
             "planner": cls.get_planner_stats_info(container),
             "conversation": cls.get_conversation_stats_info(container),
-            "prompt": cls.get_prompt_diagnostics_info(container)
+            "prompt": cls.get_prompt_diagnostics_info(container),
+            "recovery": cls.get_recovery_diagnostics_info(container)
         }

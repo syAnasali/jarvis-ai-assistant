@@ -587,7 +587,7 @@ class AgentController:
                         response_metadata["confirmation_required"] = True
                         response_metadata["pending_action_id"] = run_result.pending_action_id
                         response_metadata["tool_name"] = run_result.requested_tools[0] if run_result.requested_tools else ""
-                        response_metadata["reason"] = run_result.text
+                        response_metadata["reason"] = f"Execution of tool '{response_metadata['tool_name']}' requires confirmation."
                         if getattr(run_result, "tool_calls_data", None):
                             response_metadata["tool_calls"] = run_result.tool_calls_data
 
@@ -697,14 +697,22 @@ class AgentController:
             duration_ms = (time.perf_counter() - start_time) * 1000
             error_message = str(e)
             
-            # Let generic RuntimeError propagate (except those matching specific scenarios like rejected approvals)
-            if isinstance(e, RuntimeError) and "rejected" not in error_message.lower():
+            from app.core.exceptions import RecoverableError, NonRecoverableError, ProviderUnavailableError, ProviderTimeoutError, ToolTimeoutError, ToolCancelledError
+
+            # Let NonRecoverableError or generic RuntimeError propagate
+            if isinstance(e, NonRecoverableError) or (isinstance(e, RuntimeError) and "rejected" not in error_message.lower()):
                 raise
             
             # Map exception types to user-friendly messages and recovery paths
-            if "Ollama" in error_message or "Connection" in error_message or "ConnectError" in error_message:
+            if isinstance(e, (ProviderUnavailableError, ProviderTimeoutError)) or "Ollama" in error_message or "Connection" in error_message or "ConnectError" in error_message:
                 friendly_text = "I'm having trouble connecting to the local Ollama service. Please check that Ollama is running and configured correctly."
                 recovery_path = "ollama_connection_fallback"
+            elif isinstance(e, ToolTimeoutError) or isinstance(e, TimeoutError) or "timeout" in error_message.lower() or "timed out" in error_message.lower():
+                friendly_text = "The operation timed out. Please try again or check the background services."
+                recovery_path = "timeout_fallback"
+            elif isinstance(e, ToolCancelledError) or "cancelled" in error_message.lower():
+                friendly_text = "The requested tool operation was cancelled."
+                recovery_path = "cancellation_fallback"
             elif "Permission" in error_message or "WinError 32" in error_message or "WinError 5" in error_message:
                 friendly_text = f"A filesystem permission error occurred: {error_message}. I couldn't access or modify the file."
                 recovery_path = "permission_denied_fallback"
@@ -714,9 +722,6 @@ class AgentController:
             elif "rejected" in error_message.lower():
                 friendly_text = "The requested tool call was rejected by the user."
                 recovery_path = "rejected_approval_fallback"
-            elif isinstance(e, TimeoutError) or "timeout" in error_message.lower() or "timed out" in error_message.lower():
-                friendly_text = "The operation timed out. Please try again or check the background services."
-                recovery_path = "timeout_fallback"
             else:
                 friendly_text = f"An unexpected runtime error occurred: {error_message}."
                 recovery_path = "generic_error_fallback"
@@ -1098,6 +1103,9 @@ class AgentController:
 
             # Join accumulated text into the complete assistant response
             full_response_text = "".join(accumulator)
+            if not full_response_text and response_metadata.get("confirmation_required"):
+                tool_n = response_metadata.get("tool_name", "tool")
+                full_response_text = f"Execution of tool '{tool_n}' requires confirmation."
 
             # Create ONE assistant Message containing the complete response
             assistant_message = Message(

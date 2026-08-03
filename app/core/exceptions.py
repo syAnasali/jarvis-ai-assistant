@@ -5,12 +5,28 @@ class JarvisError(Exception):
     """Base exception class for all Jarvis AI Assistant errors."""
 
 
+class RecoverableError(JarvisError):
+    """Base exception class for all transient, recoverable runtime errors."""
+
+
+class NonRecoverableError(JarvisError):
+    """Base exception class for fatal, non-recoverable runtime errors."""
+
+
 class ConfigurationError(JarvisError):
     """Raised when there is a configuration error or validation failure."""
 
 
 class LLMError(JarvisError):
     """Raised when an operation with the language model fails."""
+
+
+class ProviderUnavailableError(LLMError, RecoverableError):
+    """Raised when the LLM provider service is down or unreachable."""
+
+
+class ProviderTimeoutError(LLMError, RecoverableError):
+    """Raised when an LLM provider request times out."""
 
 
 class MemoryError(JarvisError):
@@ -41,6 +57,14 @@ class VoiceError(JarvisError):
 
 class ToolExecutionError(JarvisError):
     """Raised when a system tool fails to execute or fails verification."""
+
+
+class ToolTimeoutError(ToolExecutionError, RecoverableError):
+    """Raised when tool execution exceeds the configured timeout."""
+
+
+class ToolCancelledError(ToolExecutionError, RecoverableError):
+    """Raised when tool execution is cancelled during runtime."""
 
 
 class ToolValidationError(ToolExecutionError):

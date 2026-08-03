@@ -121,6 +121,19 @@ class ApprovalManager:
             logger.info(f"Expired {count} pending actions past timestamp {now.isoformat()}")
         return count
 
+    def cancel_all_pending(self, reason: str = "Application exit") -> int:
+        """Cancels/rejects all currently PENDING actions (e.g. during application shutdown)."""
+        pending_actions = self._repository.list_pending()
+        count = 0
+        for action in pending_actions:
+            try:
+                self._repository.update_status(action.action_id, PendingActionStatus.REJECTED)
+                logger.info(f"Pending action cancelled: action_id={action.action_id} reason={reason}")
+                count += 1
+            except Exception as e:
+                logger.error(f"Failed to cancel pending action {action.action_id}: {e}")
+        return count
+
     def consume_approved_action(self, action_id: str, tool_name: str, arguments: Dict[str, Any]) -> None:
         """Validates the exact payload of an approved action and atomically consumes it once.
 

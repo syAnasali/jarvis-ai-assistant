@@ -40,6 +40,8 @@ class Settings(BaseSettings):
     planning_max_observation_characters: int = 16000
     planning_max_retries: int = 1
     llm_timeout: float = 60.0
+    llm_max_retries: int = 3
+    tool_execution_timeout: float = 30.0
 
     tool_default_list_limit: int = 100
     tool_max_list_limit: int = 500

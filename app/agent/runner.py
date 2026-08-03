@@ -202,7 +202,7 @@ class AgentRunner:
                         tool_calls_data=tool_calls_payload
                     )
                     return AgentRunResult(
-                        text=tool_result.error or f"Execution of tool '{tc.tool_name}' requires your confirmation.",
+                        text=f"Execution of tool '{tc.tool_name}' requires your confirmation.",
                         execution_metrics=exec_metrics,
                         requested_tools=tuple(all_requested_tools),
                         pending_action_id=tool_result.metadata.get("pending_action_id"),
@@ -403,7 +403,6 @@ class AgentRunner:
                             confirmation_required=True,
                             tool_calls_data=tool_calls_payload
                         )
-                        yield tool_result.error or f"Execution of tool '{tc.tool_name}' requires your confirmation."
                         return exec_metrics
 
                     # Format tool result turn

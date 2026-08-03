@@ -47,6 +47,7 @@ class Application:
             self.state = ApplicationState.ERROR
             raise ApplicationStartupError("Application bootstrapping failed during setup.")
 
+        self.waiting_for_approval: bool = False
         self.state = ApplicationState.STOPPED
         self.logger.info("Application core systems successfully initialized.")
 
@@ -249,7 +250,7 @@ class Application:
             approval_repository = SQLiteApprovalRepository(database_path=DATABASE_PATH)
             approval_manager = ApprovalManager(
                 repository=approval_repository,
-                timeout_seconds=settings.approval_timeout_seconds
+                timeout_seconds=None
             )
             self.container.register("approval_repository", approval_repository)
             self.container.register("approval_manager", approval_manager)
@@ -444,10 +445,11 @@ class Application:
                     stream = controller.process_request_stream(request, approval_action_id=active_approval_id)
 
                     for chunk in stream:
-                        if not label_printed:
-                            print("Jarvis > ", end="", flush=True)
-                            label_printed = True
-                        print(chunk, end="", flush=True)
+                        if chunk:
+                            if not label_printed:
+                                print("Jarvis > ", end="", flush=True)
+                                label_printed = True
+                            print(chunk, end="", flush=True)
 
                     if label_printed:
                         print()
@@ -465,18 +467,25 @@ class Application:
                             approval_manager = self.container.get("approval_manager")
                             action = approval_manager.get(action_id)
                             if action:
-                                from app.approval.cli import prompt_user_approval
-                                approved = prompt_user_approval(tool_name, reason, action.arguments, action.metadata)
-                                if approved:
-                                    approval_manager.approve(action_id)
-                                    active_approval_id = action_id
-                                    # Continue loop to resume with approved action
-                                    continue
-                                else:
-                                    approval_manager.reject(action_id)
-                                    active_approval_id = action_id
-                                    # Continue loop to resume with rejected action (and output cancellation response)
-                                    continue
+                                self.waiting_for_approval = True
+                                self.logger.info(f"Waiting for user approval... (action_id={action_id})")
+                                try:
+                                    from app.approval.cli import prompt_user_approval
+                                    approved = prompt_user_approval(tool_name, reason, action.arguments, action.metadata)
+                                    if approved:
+                                        self.logger.info("Approval received.")
+                                        approval_manager.approve(action_id)
+                                        self.logger.info("Resuming suspended execution.")
+                                        active_approval_id = action_id
+                                        continue
+                                    else:
+                                        self.logger.info("Approval rejected.")
+                                        approval_manager.reject(action_id)
+                                        self.logger.info("Resuming suspended execution.")
+                                        active_approval_id = action_id
+                                        continue
+                                finally:
+                                    self.waiting_for_approval = False
                     break  # Break out of loop if not suspended or no more approvals needed
             except LLMError as le:
                 self.logger.error(f"LLM Error during stream: {le}")
@@ -501,7 +510,7 @@ class Application:
         except Exception as e:
             self.logger.error(f"Error shutting down voice runtime: {e}")
 
-        # 1. Shutdown memory coordinator first (flushes pending jobs)
+        # 1. Shutdown memory coordinator (flushes pending jobs)
         try:
             if self.container.has("memory_coordinator"):
                 coordinator = self.container.get("memory_coordinator")
@@ -509,7 +518,7 @@ class Application:
         except Exception as e:
             self.logger.error(f"Error shutting down memory coordinator: {e}")
 
-        # 1b. Shutdown inference scheduler (waits for queued jobs to complete)
+        # 2. Shutdown inference scheduler (waits for queued jobs to complete)
         try:
             if self.container.has("inference_scheduler"):
                 scheduler = self.container.get("inference_scheduler")
@@ -517,10 +526,57 @@ class Application:
         except Exception as e:
             self.logger.error(f"Error shutting down inference scheduler: {e}")
 
-        # 2. Shutdown active LLM provider afterward
+        # 3. Shutdown tool executor worker pool
+        try:
+            if self.container.has("tool_executor"):
+                executor = self.container.get("tool_executor")
+                executor.shutdown()
+        except Exception as e:
+            self.logger.error(f"Error shutting down tool executor: {e}")
+
+        # 4. Clean up any remaining pending approval actions safely
+        try:
+            if self.container.has("approval_manager"):
+                approval_mgr = self.container.get("approval_manager")
+                count = approval_mgr.cancel_all_pending("Application exit")
+                if count > 0:
+                    self.logger.info(f"Application shutdown: cleaned up {count} pending approval actions.")
+        except Exception as e:
+            self.logger.error(f"Error cleaning pending approval actions: {e}")
+
+        # 3. Shutdown tool executor worker pool
+        try:
+            if self.container.has("tool_executor"):
+                executor = self.container.get("tool_executor")
+                if hasattr(executor, "shutdown"):
+                    executor.shutdown()
+        except Exception as e:
+            self.logger.error(f"Error shutting down tool executor: {e}")
+
+        # 4. Clean up approval manager expired actions
+        try:
+            if self.container.has("approval_manager"):
+                approval_mgr = self.container.get("approval_manager")
+                if hasattr(approval_mgr, "clear_expired"):
+                    approval_mgr.clear_expired()
+        except Exception as e:
+            self.logger.error(f"Error cleaning up approval manager: {e}")
+
+        # 5. Flush conversation manager
+        try:
+            if self.container.has("conversation_manager"):
+                conv_mgr = self.container.get("conversation_manager")
+                if hasattr(conv_mgr, "flush"):
+                    conv_mgr.flush()
+        except Exception as e:
+            self.logger.error(f"Error flushing conversation manager: {e}")
+
+        # 6. Shutdown LLM manager and providers
         try:
             if self.container.has("llm_manager"):
                 llm_manager = self.container.get("llm_manager")
+                if hasattr(llm_manager, "shutdown"):
+                    llm_manager.shutdown()
                 active = llm_manager.active_provider
                 if active:
                     active.shutdown()

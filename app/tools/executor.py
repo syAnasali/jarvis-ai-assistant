@@ -1,18 +1,20 @@
-"""Execution runtime for resolving, validating, and executing tools."""
+"""Execution runtime for resolving, validating, and executing tools with timeout and recovery protection."""
 
 import time
+import concurrent.futures
 from typing import Any, Dict
 from app.tools.registry import ToolRegistry
 from app.tools.models import ToolPermission, ToolResult
 from app.agent.models import ToolCall
-from app.core.exceptions import ToolExecutionError, ToolValidationError
+from app.config.settings import settings
+from app.core.exceptions import ToolExecutionError, ToolValidationError, ToolTimeoutError, ToolCancelledError
 from app.core.logger import JarvisLogger
 
 logger = JarvisLogger.get_logger("tool_executor")
 
 
 class ToolExecutor:
-    """Handles controlled validation and execution of registered system tools."""
+    """Handles controlled validation, timeout protection, cancellation, and execution of registered system tools."""
 
     def __init__(self, registry: ToolRegistry, approval_manager: Any = None) -> None:
         """Initializes the ToolExecutor with a ToolRegistry.
@@ -23,9 +25,37 @@ class ToolExecutor:
         """
         self._registry = registry
         self._approval_manager = approval_manager
+        self._pool = concurrent.futures.ThreadPoolExecutor(max_workers=4, thread_name_prefix="tool_exec")
+        self._cancel_requested = False
+        self._timeouts_count = 0
+        self._cancellations_count = 0
+
+    @property
+    def timeouts_count(self) -> int:
+        return self._timeouts_count
+
+    @property
+    def cancellations_count(self) -> int:
+        return self._cancellations_count
+
+    def cancel_execution(self) -> None:
+        """Flags cancellation for active/pending tool execution."""
+        self._cancel_requested = True
+        logger.warning("Tool execution cancellation requested.")
+
+    def reset_cancellation(self) -> None:
+        """Resets the cancellation flag."""
+        self._cancel_requested = False
+
+    def shutdown(self) -> None:
+        """Gracefully halts the tool executor worker pool."""
+        try:
+            self._pool.shutdown(wait=False, cancel_futures=True)
+        except Exception as e:
+            logger.error(f"Error shutting down tool executor pool: {e}")
 
     def execute(self, tool_call: ToolCall, approval_action_id: str | None = None) -> ToolResult:
-        """Resolves and executes a tool call if permissions allow.
+        """Resolves and executes a tool call if permissions allow with timeout and cancellation protection.
 
         Args:
             tool_call: The ToolCall instance to execute.
@@ -38,11 +68,22 @@ class ToolExecutor:
         arguments = tool_call.arguments
         logger.info(f"Tool execution requested: '{name}' (approval_id={approval_action_id})")
 
+        if self._cancel_requested:
+            self._cancellations_count += 1
+            self.reset_cancellation()
+            logger.warning(f"Tool execution cancelled before launch: '{name}'")
+            return ToolResult(
+                tool_name=name,
+                success=False,
+                error=f"Execution of tool '{name}' was cancelled.",
+                metadata={"cancelled": True}
+            )
+
         try:
             # 1. Resolve tool
             tool = self._registry.get(name)
 
-            # 2. Validate arguments BEFORE checking permission level (ensuring validation happens before approval)
+            # 2. Validate arguments BEFORE checking permission level
             tool.validate_arguments(arguments)
             
             # 3. Check permission level
@@ -111,19 +152,34 @@ class ToolExecutor:
                     metadata={"permission_level": tool.permission_level.value}
                 )
 
-            # Removed redundant validation step from here
-
-            # 4. Execute tool
+            # 4. Execute tool with timeout protection
             logger.info(f"Tool execution started: tool_name={name}")
             logger.info(f"Tool execution started: '{name}'")
             start_time = time.perf_counter()
             if hasattr(tool, "current_approval_action_id"):
                 tool.current_approval_action_id = approval_action_id
+
+            timeout_sec = getattr(tool, "timeout_seconds", None) or settings.tool_execution_timeout
+
+            def _run_tool():
+                return tool.execute(**arguments)
+
             try:
-                output = tool.execute(**arguments)
+                future = self._pool.submit(_run_tool)
+                output = future.result(timeout=timeout_sec)
+            except concurrent.futures.TimeoutError:
+                self._timeouts_count += 1
+                logger.error(f"Tool execution timed out after {timeout_sec}s: tool_name={name}")
+                raise ToolTimeoutError(f"Tool '{name}' execution timed out after {timeout_sec} seconds.")
             finally:
                 if hasattr(tool, "current_approval_action_id"):
                     tool.current_approval_action_id = None
+                if hasattr(tool, "cleanup"):
+                    try:
+                        tool.cleanup()
+                    except Exception as cl_err:
+                        logger.error(f"Error during tool cleanup for '{name}': {cl_err}")
+
             duration_ms = (time.perf_counter() - start_time) * 1000
             logger.info(f"Tool execution completed: tool_name={name}")
             logger.info(f"Tool execution completed: '{name}' in {duration_ms:.2f} ms")
@@ -141,6 +197,20 @@ class ToolExecutor:
                 }
             )
 
+        except ToolTimeoutError as tto:
+            return ToolResult(
+                tool_name=name,
+                success=False,
+                error=str(tto),
+                metadata={"timeout": True, "partial_failure": True}
+            )
+        except ToolCancelledError as tce:
+            return ToolResult(
+                tool_name=name,
+                success=False,
+                error=str(tce),
+                metadata={"cancelled": True, "partial_failure": True}
+            )
         except ToolValidationError as tve:
             logger.error(f"Tool validation failed: {tve}")
             if name in ("create_file", "write_text_file", "move_path", "delete_path", "create_directory", "inspect_path", "list_directory", "read_text_file"):
@@ -159,7 +229,7 @@ class ToolExecutor:
                 tool_name=name,
                 success=False,
                 error=str(tee),
-                metadata={}
+                metadata={"partial_failure": True}
             )
         except Exception as e:
             logger.error(f"Tool execution failed (runtime): {e}")
@@ -169,5 +239,5 @@ class ToolExecutor:
                 tool_name=name,
                 success=False,
                 error=f"Runtime error during tool execution: {e}",
-                metadata={}
+                metadata={"partial_failure": True}
             )
