@@ -139,10 +139,27 @@ def prompt_user_approval(
         sys.stdout.write("==========================================================\n")
         sys.stdout.flush()
 
+    # Flush any leftover keyboard input sitting in buffer before prompting
     try:
-        user_input = input("\nApprove this action? [y/N]: ").strip().lower()
-        return user_input in ("y", "yes")
-    except (KeyboardInterrupt, EOFError):
-        sys.stdout.write("\nAction approval interrupted. Defaulting to reject.\n")
-        sys.stdout.flush()
-        return False
+        import msvcrt
+        while msvcrt.kbhit():
+            msvcrt.getch()
+    except Exception:
+        pass
+
+    first = True
+    while True:
+        try:
+            prompt_str = "\nApprove this action? [y/N]: " if first else "Please enter 'y' to approve or 'n' to cancel: "
+            user_input = input(prompt_str).strip().lower()
+            first = False
+            if user_input in ("y", "yes"):
+                return True
+            elif user_input in ("n", "no"):
+                return False
+            else:
+                continue
+        except (KeyboardInterrupt, EOFError):
+            sys.stdout.write("\nAction approval interrupted. Defaulting to reject.\n")
+            sys.stdout.flush()
+            return False
