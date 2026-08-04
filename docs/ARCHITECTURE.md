@@ -299,6 +299,22 @@ Jarvis incorporates production-quality PySide6 Voice and Vision Workspaces (`app
 - **`AnnotationLayerWidget`**: Bounding box overlay for OCR text and visual region highlights (`app/gui/vision/annotations.py`).
 - **`ImageViewerWidget`**: Interactive image preview canvas supporting zoom and pan (`app/gui/vision/viewer.py`).
 
+---
+
+## 22. Planner Dashboard (`app/gui/planner/`)
+
+Jarvis incorporates a production-quality PySide6 Planner Dashboard (`app/gui/planner/`) visualizing Autonomous Hierarchical Planning DAG task graphs and execution metrics.
+
+### Key Planner Architectural Components:
+- **`PlannerController` & `PlannerWorker`**: Manages DAG execution state, node status transitions, and off-thread execution (`app/gui/planner/controller.py`, `app/gui/planner/worker.py`).
+- **`DagGraphWidget`**: Visual DAG node dependency graph with color-coded status rendering and node inspector (`app/gui/planner/graph.py`).
+- **`ExecutionTimelineWidget`**: Chronological step event timeline (`app/gui/planner/timeline.py`).
+- **`ProgressTrackerWidget`**: Progress bar, task ratio counters, and Pause/Resume/Cancel controls (`app/gui/planner/progress.py`).
+- **`RecoveryPanelWidget`**: Retry history, recovery strategy evaluation, and rollback status display (`app/gui/planner/recovery.py`).
+- **`LiveExecutionLogsWidget`**: Real-time log stream with search filter (`app/gui/planner/execution.py`).
+- **`PlanMetricsWidget`**: Displays live Observability metrics (Success Rate, Recovery Rate, Average Duration) (`app/gui/planner/widgets.py`).
+
+
 
 
 

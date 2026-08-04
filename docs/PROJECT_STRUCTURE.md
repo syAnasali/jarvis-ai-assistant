@@ -62,9 +62,16 @@ jarvis-ai-assistant/
 │   │   ├── controller.py             # ChatController orchestrating session history & QThread workers
 │   │   ├── markdown.py               # MarkdownRenderer converting Markdown to PySide6 Rich Text HTML
 │   │   ├── message.py                # MessageBubble, StreamingBubble, TypingIndicator, MessageListWidget
-│   │   ├── models.py                 # ChatMessage, MessageType, AttachmentInfo, ConversationSession
-│   │   ├── streaming.py              # StreamingHandler updating real-time tokens
-│   │   ├── syntax.py                 # CodeBlockWidget with language badge and copy button
+│   │   ├── planner/                  # Planner Dashboard Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── controller.py         # PlannerController managing DAG graph & PlannerWorker
+│   │   │   ├── execution.py          # LiveExecutionLogsWidget streaming log panel
+│   │   │   ├── graph.py              # DagGraphWidget visual DAG node graph & inspector
+│   │   │   ├── progress.py           # ProgressTrackerWidget progress bar & control buttons
+│   │   │   ├── recovery.py           # RecoveryPanelWidget retry history & rollback status
+│   │   │   ├── timeline.py           # ExecutionTimelineWidget chronological step timeline
+│   │   │   ├── widgets.py            # PlanMetricsWidget & PlanCardWidget summaries
+│   │   │   └── worker.py             # PlannerWorker QThread executing DAG nodes off-thread
 │   │   ├── vision/                   # Vision Workspace Subsystem
 │   │   │   ├── __init__.py           # Package exports
 │   │   │   ├── annotations.py        # AnnotationLayerWidget for OCR bounding box overlays
