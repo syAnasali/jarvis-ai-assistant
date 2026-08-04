@@ -358,6 +358,21 @@ Jarvis incorporates a production-quality PySide6 Observability Dashboard (`app/g
 - **`RequestDetailsWidget`**: Inspector panel displaying request trace properties (`app/gui/observability/requests.py`).
 - **`ExportTelemetryDialog`**: Modal dialog for exporting telemetry to JSON, CSV, and Markdown (`app/gui/observability/export.py`).
 
+---
+
+## 26. Native Approval Center (`app/gui/approval/`)
+
+Jarvis incorporates a production-quality PySide6 Native Approval Center (`app/gui/approval/`) replacing CLI confirmation prompts with human-in-the-loop modal dialogs and risk level badges.
+
+### Key Approval Architectural Components:
+- **`ApprovalController` & `ApprovalWorker`**: Orchestrates pending approval queue, modal popups, and off-thread resolution execution (`app/gui/approval/controller.py`, `app/gui/approval/worker.py`).
+- **`RiskBadgeWidget`**: Renders color-coded risk levels (`SAFE`, `CONFIRMATION`, `RESTRICTED`) (`app/gui/approval/risk.py`).
+- **`ApprovalDialog`**: Modal popup dialog displaying tool parameters, risk badge, and `Approve`/`Reject` buttons (`app/gui/approval/dialog.py`).
+- **`ApprovalQueueWidget`**: Table view presenting pending tool action approval requests (`app/gui/approval/queue.py`).
+- **`ApprovalHistoryWidget`**: Log table recording historical approval decisions and execution statuses (`app/gui/approval/history.py`).
+- **`ApprovalDetailsWidget`**: Inspector panel displaying tool parameters and risk evaluation (`app/gui/approval/details.py`).
+
+
 
 
 

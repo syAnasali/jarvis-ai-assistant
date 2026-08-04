@@ -43,6 +43,9 @@ class MainWindow(QMainWindow):
         self.resize(1280, 800)
 
         self.settings_mgr = settings_manager or GuiSettingsManager()
+        from app.gui.approval import ApprovalController, ApprovalDialog
+        self.approval_ctrl = ApprovalController(parent=self)
+        self.approval_ctrl.approval_requested.connect(self._on_approval_requested)
 
         # Root Central Widget
         central_widget = QWidget(self)
@@ -134,6 +137,13 @@ class MainWindow(QMainWindow):
 
         if self.settings_mgr.is_sidebar_collapsed():
             self.sidebar.toggle_collapse()
+
+    def _on_approval_requested(self, action_dict: dict) -> None:
+        """Launches modal ApprovalDialog on pending tool approval request."""
+        from app.gui.approval import ApprovalDialog
+        dialog = ApprovalDialog(action_dict, self)
+        decision = "APPROVE" if dialog.exec() else "REJECT"
+        self.approval_ctrl.resolve_action(decision, action_dict.get("id", ""))
 
     def closeEvent(self, event: Any) -> None:
         """Saves geometry on window close."""

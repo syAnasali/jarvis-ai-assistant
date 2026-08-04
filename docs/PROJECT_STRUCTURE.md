@@ -54,7 +54,15 @@ jarvis-ai-assistant/
 │   │   ├── lifecycle.py              # ApplicationState enum
 │   │   └── logger.py                 # Loguru log setup handlers
 │   ├── gui/                          # PySide6 Desktop GUI Foundation Subsystem
-│   │   ├── __init__.py               # Package exports
+│   │   ├── approval/                 # Native Approval Center Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── controller.py         # ApprovalController managing pending queue & ApprovalWorker
+│   │   │   ├── details.py            # ApprovalDetailsWidget tool action inspector
+│   │   │   ├── dialog.py             # ApprovalDialog modal popup approval dialog
+│   │   │   ├── history.py            # ApprovalHistoryWidget approval log table
+│   │   │   ├── queue.py              # ApprovalQueueWidget pending tool request table
+│   │   │   ├── risk.py               # RiskBadgeWidget color-coded risk badge renderer
+│   │   │   └── worker.py             # ApprovalWorker QThread executing approvals off-thread
 │   │   ├── chat/                     # Chat Interface & Streaming Experience Subsystem
 │   │   ├── __init__.py               # Package exports
 │   │   ├── attachments.py            # AttachmentWidget and AttachmentBar for file intake
