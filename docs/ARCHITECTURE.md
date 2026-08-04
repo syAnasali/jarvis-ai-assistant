@@ -284,6 +284,22 @@ Jarvis incorporates a production-quality PySide6 Chat Interface (`app/gui/chat/`
 - **`CitationWidget`**: Expandable RAG document citation cards with clickable `file:///` scheme links (`app/gui/chat/citations.py`).
 - **`AttachmentBar`**: Multi-file attachment intake supporting images, documents, clipboard pasting, and drag & drop (`app/gui/chat/attachments.py`).
 
+---
+
+## 21. Voice & Vision Workspace (`app/gui/voice/`, `app/gui/vision/`)
+
+Jarvis incorporates production-quality PySide6 Voice and Vision Workspaces (`app/gui/voice/`, `app/gui/vision/`) consuming backend speech and screen inspection runtimes via thread-safe `QThread` workers.
+
+### Key Voice & Vision Architectural Components:
+- **`VoiceController` & `VoiceWorker`**: Manages Push-to-Talk, Always-Listening toggle, and off-thread STT/TTS execution (`app/gui/voice/controller.py`, `app/gui/voice/worker.py`).
+- **`WaveformWidget`**: Live animated microphone volume level meter (`app/gui/voice/waveform.py`).
+- **`VoiceSessionWidget`**: Displays wake-word status ("Jarvis"), user transcript, assistant speech, and barge-in interrupt button (`app/gui/voice/session.py`).
+- **`VisionController` & `VisionWorker`**: Manages desktop screen grabs, active window capture, region cropping, and off-thread OCR processing (`app/gui/vision/controller.py`, `app/gui/vision/worker.py`).
+- **`RegionSelectionOverlay`**: Interactive semi-transparent desktop bounding box region selector (`app/gui/vision/overlays.py`).
+- **`AnnotationLayerWidget`**: Bounding box overlay for OCR text and visual region highlights (`app/gui/vision/annotations.py`).
+- **`ImageViewerWidget`**: Interactive image preview canvas supporting zoom and pan (`app/gui/vision/viewer.py`).
+
+
 
 
 

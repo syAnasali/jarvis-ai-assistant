@@ -65,7 +65,20 @@ jarvis-ai-assistant/
 │   │   ├── models.py                 # ChatMessage, MessageType, AttachmentInfo, ConversationSession
 │   │   ├── streaming.py              # StreamingHandler updating real-time tokens
 │   │   ├── syntax.py                 # CodeBlockWidget with language badge and copy button
-│   │   └── worker.py                 # ChatWorker QThread running backend generation off UI thread
+│   │   ├── vision/                   # Vision Workspace Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── annotations.py        # AnnotationLayerWidget for OCR bounding box overlays
+│   │   │   ├── controller.py         # VisionController managing capture workflows & VisionWorker
+│   │   │   ├── overlays.py           # RegionSelectionOverlay bounding box region selector
+│   │   │   ├── viewer.py             # ImageViewerWidget interactive canvas
+│   │   │   └── worker.py             # VisionWorker QThread running capture & OCR off UI thread
+│   │   ├── voice/                    # Voice Workspace Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── controller.py         # VoiceController managing Push-to-Talk & VoiceWorker
+│   │   │   ├── microphone.py         # MicrophoneDeviceSelector audio input device dropdown
+│   │   │   ├── session.py            # VoiceSessionWidget displaying live transcripts & barge-in
+│   │   │   ├── waveform.py           # WaveformWidget animated microphone volume level meter
+│   │   │   └── worker.py             # VoiceWorker QThread running STT & TTS off UI thread
 │   │   ├── dialogs.py                # ConfirmationDialog, ErrorDialog, AboutDialog
 │   │   ├── icons.py                  # IconManager generating vector and procedural icons
 │   │   ├── main_window.py            # MainWindow application shell layout
