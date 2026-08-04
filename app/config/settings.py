@@ -71,15 +71,42 @@ class Settings(BaseSettings):
     voice_max_utterance_seconds: int = 30
     voice_min_speech_seconds: float = 0.25
     voice_end_silence_seconds: float = 0.8
+    voice_language: str = "en"
+    voice_wake_word: str = "Hey Jarvis"
+    voice_vad_threshold: float = 0.02
+    voice_push_to_talk: bool = True
     stt_provider: str = "faster_whisper"
     stt_model: str = "tiny"
     stt_device: str = "auto"
     stt_compute_type: str = "auto"
     stt_language: str | None = None
-    tts_provider: str = "pyttsx3"
+    tts_provider: str = "piper"
     tts_voice: str | None = None
     tts_rate: int | None = None
     tts_max_chars: int = 1000
+
+    vision_enabled: bool = True
+    vision_provider: str = "ollama"
+    vision_model: str = "llava"
+    ocr_provider: str = "local"
+    screenshot_format: str = "png"
+    ocr_language: str = "eng"
+    max_image_size: int = 4096
+
+    planner_enabled: bool = True
+    planner_max_nodes: int = 50
+    planner_default_retry_count: int = 3
+    planner_verification_enabled: bool = True
+    planner_persistence_path: str = "data/jarvis.db"
+    planner_auto_recovery: bool = True
+
+    knowledge_enabled: bool = True
+    embedding_provider: str = "ollama"
+    embedding_model: str = "nomic-embed-text"
+    chunk_size: int = 512
+    chunk_overlap: int = 64
+    default_chunk_strategy: str = "recursive"
+    hybrid_alpha: float = 0.7
 
 
     @classmethod

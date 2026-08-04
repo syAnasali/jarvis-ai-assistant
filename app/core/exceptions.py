@@ -55,6 +55,10 @@ class VoiceError(JarvisError):
     """Raised when speech-to-text or text-to-speech services fail."""
 
 
+class VisionError(JarvisError):
+    """Raised when image processing or vision providers fail."""
+
+
 class ToolExecutionError(JarvisError):
     """Raised when a system tool fails to execute or fails verification."""
 

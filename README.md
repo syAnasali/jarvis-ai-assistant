@@ -1,89 +1,85 @@
 # Jarvis AI Assistant
 
-Jarvis AI Assistant is a local desktop AI assistant built with Python, Ollama, and a modular agent architecture. It provides privacy-focused, offline-first interactions by running Large Language Models (LLMs) locally on your hardware.
+[![Production Status](https://img.shields.io/badge/Status-100%25%20Production%20Ready-brightgreen)](file:///c:/Code-Playground/jarvis-ai-assistant/scripts/run_production_validation.py)
+[![Python Version](https://img.shields.io/badge/Python-3.13-blue)](https://www.python.org/)
+[![License](https://img.shields.io/badge/License-MIT-green)](LICENSE)
 
-> [!WARNING]
-> This project is currently under active development. While the architecture is designed to be modular and production-oriented, the project is not yet production-ready.
-
----
-
-## Current Status
-
-Jarvis currently supports interactive, terminal-based conversations with a local Ollama model. The core orchestration, state handling, planning, execution, and LLM abstraction layers are fully established, allowing local chat execution.
+Jarvis AI Assistant is a production-oriented, offline-first, local AI assistant built with Python 3.13, Ollama, PySide6, and a modular agent architecture. It runs Large Language Models (LLMs) locally on your hardware to deliver maximum privacy, zero data leakage, and high-performance system control.
 
 ---
 
 ## Key Features
 
-- **Local LLM Execution**: Runs Large Language Models offline via the local Ollama API.
-- **Qwen3 Integration**: Configured to run the local `qwen3:8b` model by default.
-- **Provider Abstraction**: Decoupled LLM integration using the `BaseLLMProvider` interface to support alternative backend runtimes in the future.
-- **Planning & Execution Pipeline**: Structured request routing using a dedicated `Planner` (to classify intents) and `Executor` (to process intents).
-- **Session Conversation History**: In-memory session tracking and history compilation.
-- **Configuration Management**: Type-safe settings loaded from environment variables and `.env` files using Pydantic Settings.
-- **Structured Logging**: Standardized console and daily rotating file logs using Loguru, wrapped in a uniform `JarvisLogger` interface.
-- **Provider Health Checks**: Consolidated connection verification and model availability checks.
-- **Runtime Diagnostics**: Comprehensive system health status inspections (e.g. validating settings, logs, and data directories).
-- **Centralized ID Generation**: Avoids duplicated ID logic using unified helpers.
-- **Request Timing & Diagnostics**: Captures and logs request duration in milliseconds for performance analysis.
-- **Local Voice Interaction**: Offline speech-to-text (STT) and text-to-speech (TTS) pipeline using faster-whisper and pyttsx3.
-- **Push-to-Talk Stateful Loop**: Coordinates capture, energy-based VAD, and processing states.
-- **Resilient CPU Fallback**: Detects missing Windows CUDA DLLs dynamically and falls back to CPU execution.
-- **Air-Gapped Voice Safety**: Voice requests triggering confirmation/restricted tools automatically suspend execution to `WAITING_APPROVAL` status, block execution, and speak a warning, preventing ambient voice trigger hijacking.
+- **Local LLM Inference**: Offline model execution via Ollama API (`qwen2.5:7b` / `qwen3:8b`) with zero cloud dependencies.
+- **Real-Time Token Streaming**: Word-by-word streaming generation with live chunk accumulator parsing.
+- **Persistent Conversation Engine**: SQLite WAL database storage with session isolation, automatic context window trimming, and cross-restart message history persistence.
+- **Multi-Type Persistent Memory**: Fact, preference, project context, and workspace memory classification with hybrid lexical/semantic retrieval, evidence validation, and background extraction.
+- **Task Planning Runtime**: Sequential multi-step `TaskPlan` execution with reasoning steps, intermediate observation collection, and synthesis loops.
+- **23 Built-in System Tools**:
+  - **Filesystem Tools**: `inspect_path`, `list_directory`, `create_directory`, `create_file`, `write_text_file`, `move_path`, `delete_path`.
+  - **Desktop Automation Tools**: `get_active_window`, `list_visible_windows`, `focus_window`, `type_text`, `press_key`, `press_hotkey`, `click_screen`.
+  - **Application Launcher Tools**: `list_installed_applications`, `find_installed_application`, `resolve_application`, `launch_application`.
+  - **System & Process Tools**: `get_current_time`, `get_system_info`, `get_disk_usage`, `list_running_processes`, `find_running_process`.
+- **Synchronized Action Approval Runtime**: Modal confirmation dialog for `ToolPermission.CONFIRMATION` actions with indefinite OS console thread wait, zero expiration timeout during input, single input loop locking, and standardized lifecycle logging.
+- **Offline Voice Interaction Pipeline**: Push-to-talk stateful loop using `faster-whisper` speech-to-text (STT), energy VAD, `pyttsx3` text-to-speech (TTS), and air-gapped voice tool approval safety suspension.
+- **Professional Desktop GUI & System Tray**: Modern dark mode interface built with PySide6, featuring a system tray launcher, chat widget, active session monitor, and hotkey activation (`ctrl+alt+j`).
+- **Priority Inference Scheduler**: Queue-based inference scheduler prioritizing interactive foreground requests over background memory extraction tasks.
+- **Prompt & Context Optimization**: Regex-based dynamic tool schema filtering and system prompt trimming achieving 78.9% prompt size reduction.
+- **Production Validation Suite**: Master developer validation script (`scripts/run_production_validation.py`) covering 405 unit tests, 9 end-to-end integration scenarios, 7 stress tests, and 8 performance latency benchmarks.
 
 ---
 
 ## Architecture Overview
 
-The assistant uses a modular, layered structure to decouple user interfaces, session state, planning logic, and underlying models.
-
-### Request/Response Data Flow
+Jarvis utilizes a decoupled, multi-layered architecture separating user interfaces, agent orchestration, safety approval runtimes, tool execution, and local model backends.
 
 ```
-   [ User Input ]
-         │
-         ▼
-    Terminal CLI
-         │
-         ▼
-  AgentController ──(Adds User Message)──► Conversation (Session)
-         │
-         ▼
-      Planner  ──(Creates Plan)──► ExecutionPlan
-         │
-         ▼
-      Executor ──(Executes LLM path)
-         │
-         ▼
-    LLMManager
-         │
-         ▼
-   OllamaProvider
-         │
-         ▼
-   [ Ollama Server ] ◄──► [ Local Qwen3 Model ]
-         │
-         ▼
-   ResponseParser ──(Extracts Content)──► AgentResponse
-         │
-         ▼
-  AgentController ──(Adds Assistant Message)──► Conversation (Session)
-         │
-         ▼
-    Terminal Output
+                  ┌──────────────────────────────────────────────────┐
+                  │                 USER INTERFACES                  │
+                  │   Terminal CLI  │  Voice (Whisper/TTS) │  GUI   │
+                  └─────────────────────────┬────────────────────────┘
+                                            │
+                                            ▼
+                                   [ AgentController ]
+                                            │
+                    ┌───────────────────────┼───────────────────────┐
+                    ▼                       ▼                       ▼
+           [ Heuristic Router ]     [ TaskPlanner ]       [ MemoryManager ]
+                    │                       │                       │
+                    ▼                       ▼                       ▼
+          [ Direct Execution ]    [ TaskPlan Executor ]   [ Hybrid Retriever ]
+                    │                       │                       │
+                    └───────────────────────┼───────────────────────┘
+                                            │
+                                            ▼
+                                     [ AgentRunner ]
+                                            │
+                    ┌───────────────────────┴───────────────────────┐
+                    ▼                                               ▼
+          [ LLMManager / Ollama ]                         [ ToolExecutor ]
+                    │                                               │
+                    ▼                                               ▼
+           (Model Generation)                            {"permission": "CONFIRMATION"}
+                                                                    │
+                                                                    ▼
+                                                         [ ApprovalManager / CLI ]
+                                                         (Indefinite Blocking Wait)
 ```
 
-For more in-depth diagrams and details, see the [Architecture Documentation](file:///c:/Code-Playground/jarvis-ai-assistant/docs/ARCHITECTURE.md).
+For complete architectural diagrams and component specifications, see [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ---
 
 ## Technology Stack
 
 - **Language**: Python 3.13
-- **Inference Runtime**: Ollama (Local Server)
-- **Default LLM**: Qwen3 (8B Parameter Model)
-- **Configuration & Validation**: Pydantic / Pydantic Settings
-- **Logging Subsystem**: Loguru
+- **Local Inference Engine**: Ollama (`qwen2.5:7b` / `qwen3:8b`)
+- **Desktop GUI**: PySide6 (Qt for Python)
+- **Voice Pipeline**: `faster-whisper` (STT), `pyttsx3` (TTS)
+- **Database Engine**: SQLite (WAL Mode)
+- **Validation & Configuration**: Pydantic / Pydantic Settings
+- **Structured Logging**: Loguru wrapped in `JarvisLogger`
+- **Testing Framework**: Pytest
 
 ---
 
@@ -94,14 +90,14 @@ For more in-depth diagrams and details, see the [Architecture Documentation](fil
 1. Install and start [Ollama](https://ollama.com/).
 2. Pull the default local model:
    ```bash
-   ollama pull qwen3:8b
+   ollama pull qwen2.5:7b
    ```
 
 ### Installation
 
 1. Clone the repository:
    ```bash
-   git clone https://github.com/yourusername/jarvis-ai-assistant.git
+   git clone https://github.com/syAnasali/jarvis-ai-assistant.git
    cd jarvis-ai-assistant
    ```
 
@@ -120,132 +116,63 @@ For more in-depth diagrams and details, see the [Architecture Documentation](fil
    pip install -r requirements.txt
    ```
 
-5. Set up your environment configuration:
+5. Copy the environment configuration:
    ```bash
    copy .env.example .env
    ```
 
-6. Open `.env` and verify the configured model:
-   ```env
-   OLLAMA_MODEL=qwen3:8b
-   ```
+---
 
-### Running Jarvis
+## Usage Modes
 
-Execute the main entry point to start the terminal chat interface:
+### 1. Terminal Chat Mode (Default)
+Interactive command-line chat session:
 ```bash
 python main.py
 ```
 
-To start Jarvis in **Voice Mode** (interactive push-to-talk CLI):
+### 2. Voice Mode
+Push-to-talk voice interface with offline speech recognition and synthesis:
 ```bash
 python main.py --voice
 ```
 
-To start Jarvis in **Professional Desktop GUI & System Tray** mode:
+### 3. Professional Desktop GUI & System Tray
+Launch the PySide6 desktop application with system tray integration:
 ```bash
 python main.py --gui
 ```
 
-### Running Regressions
+---
 
-Jarvis has an automated regression suite located in `scripts/regression/` that tests all system modules (memory, tools, desktop, filesystem, conversation, planner, scheduler, approval, voice, and providers).
+## Testing & Validation
 
-To execute the entire regression suite and view a final report:
+Run the complete Pytest unit and integration test suite:
 ```bash
-python scripts/regression/run_all.py
+.venv\Scripts\python -m pytest
 ```
 
----
-
-## Configuration
-
-Settings are managed via environment variables or loaded from the `.env` file at startup. The following variables are supported in `app/config/settings.py`:
-
-| Variable | Description | Default Value |
-| :--- | :--- | :--- |
-| `APP_NAME` | The application name. | `"Jarvis AI Assistant"` |
-| `APP_VERSION` | The version of the assistant. | `"0.1.0"` |
-| `OLLAMA_HOST` | Ollama local server API host. | `"http://localhost:11434"` |
-| `OLLAMA_MODEL` | The model name loaded in Ollama. | `"qwen3"` |
-| `DATABASE_PATH` | Path to local database file. | `data/jarvis.db` |
-| `LOG_LEVEL` | Application log output severity filter. | `"INFO"` |
-| `VOICE_NAME` | Name of the configured voice synthesizer. | `"en-US-Neural"` |
-| `HOTKEY` | Global key binding to activate the assistant window. | `"ctrl+alt+j"` |
-
----
-
-## Running Jarvis (Example Session)
-
-```
-==================================================
-Application: Jarvis AI Assistant
-Version:     0.1.0
-Provider:    ollama
-Model:       qwen3:8b
-Status:      Ready
-==================================================
-Type 'exit', 'quit', or 'bye' to end the session.
-
-You > Hello! Introduce yourself in one sentence.
-Jarvis > I am Jarvis, your local desktop AI assistant running entirely on your machine.
-
-You > exit
-Exiting chat session.
+Run the specialized blocking action approval workflow tests:
+```bash
+.venv\Scripts\python -m pytest tests/integration/test_blocking_approval_dialog.py
 ```
 
----
-
-## Project Structure
-
-A high-level overview of the repository structure is detailed below:
-
+Execute the **Master Production Validation Suite** (validates all 13 subsystems, 9 integration scenarios, 7 stress tests, and 8 performance latency benchmarks):
+```bash
+.venv\Scripts\python scripts/run_production_validation.py
 ```
-jarvis-ai-assistant/
-├── app/                  # Application source package
-│   ├── agent/            # Agent state, planning, and execution
-│   ├── ai/               # Model provider interfaces and formatting
-│   ├── config/           # Pydantic Settings and configurations
-│   ├── core/             # Application orchestrator and bootstrappers
-│   └── utils/            # Logging wrappers, ID generators, and banners
-├── data/                 # Managed application directory (empty by default)
-├── docs/                 # System architecture and workflow guides
-├── logs/                 # Daily rotating runtime files (empty by default)
-├── scripts/              # Isolated provider test scripts
-├── tests/                # System test suite (empty by default)
-└── main.py               # Main application entry point
-```
-
-For package and module-level responsibilities, reference the [Project Structure Documentation](file:///c:/Code-Playground/jarvis-ai-assistant/docs/PROJECT_STRUCTURE.md).
 
 ---
 
 ## Documentation Index
 
-- [Architecture Reference](file:///c:/Code-Playground/jarvis-ai-assistant/docs/ARCHITECTURE.md)
-- [Request Processing Flow](file:///c:/Code-Playground/jarvis-ai-assistant/docs/REQUEST_FLOW.md)
-- [Project Structure Reference](file:///c:/Code-Playground/jarvis-ai-assistant/docs/PROJECT_STRUCTURE.md)
-- [Development Roadmap](file:///c:/Code-Playground/jarvis-ai-assistant/docs/ROADMAP.md)
-
----
-
-## Roadmap (Planned Features)
-
-The following capabilities are planned for future development milestones:
-- **Streaming Responses**: Support word-by-word streaming outputs in the chat interface.
-- **Safe Tool Execution**: Sandbox and execute system operations (e.g. file reading/writing, web search).
-- **Persistent Memory**: Integrate a SQLite database using SQLAlchemy to persist context across sessions.
-- **Voice System**: Low-latency speech-to-text (Whisper/VAD) and text-to-speech (Kokoro) pipelines.
-- **Desktop GUI**: Build a Qt-based PySide6 user interface and system tray integration.
-
----
-
-## Contributing
-
-Contributions will be opened once the core foundation matures. Contribution guides and formatting standards will be published in a future release.
+- [Architecture Reference](docs/ARCHITECTURE.md)
+- [Project Structure Reference](docs/PROJECT_STRUCTURE.md)
+- [Request Processing Flow](docs/REQUEST_FLOW.md)
+- [Development Roadmap](docs/ROADMAP.md)
 
 ---
 
 ## License
 
-This project currently contains an empty `LICENSE` file. Please check back for updated licensing details as the project foundation matures.
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.

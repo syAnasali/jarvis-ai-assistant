@@ -186,6 +186,34 @@ class FasterWhisperSTTProvider(SpeechToTextProvider):
             logger.error(f"Error during audio transcription: {e}")
             raise VoiceError(f"Transcription failed: {e}") from e
 
+    def stream_transcribe(self, frames: Any) -> Any:
+        """Streams partial transcription results as audio frames arrive."""
+        if not self._is_initialized or self._model is None:
+            self.initialize()
+
+        pcm_chunks = []
+        sample_rate = 16000
+        channels = 1
+        sample_width = 2
+
+        for frame in frames:
+            pcm_chunks.append(frame.pcm_data)
+            sample_rate = frame.sample_rate
+            channels = frame.channels
+            sample_width = frame.sample_width
+
+            combined_pcm = b"".join(pcm_chunks)
+            if len(combined_pcm) >= sample_rate * sample_width * 0.5:  # at least 0.5 sec
+                duration = len(combined_pcm) / (sample_rate * channels * sample_width)
+                segment = AudioSegment(
+                    pcm_data=combined_pcm,
+                    sample_rate=sample_rate,
+                    channels=channels,
+                    sample_width=sample_width,
+                    duration_seconds=duration
+                )
+                yield self.transcribe(segment)
+
     def health_check(self) -> Dict[str, Any]:
         """Returns diagnostic details."""
         return {
@@ -207,3 +235,7 @@ class FasterWhisperSTTProvider(SpeechToTextProvider):
         # Request GC cleanup
         gc.collect()
         logger.info("FasterWhisper STT model shutdown complete.")
+
+
+# Alias for provider neutrality
+FasterWhisperProvider = FasterWhisperSTTProvider

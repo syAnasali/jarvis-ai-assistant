@@ -1,7 +1,7 @@
 """Abstract base interface contracts for the Voice Subsystem."""
 
 from abc import ABC, abstractmethod
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Generator, Iterable
 from app.voice.models import AudioFrame, AudioSegment, TranscriptionResult, SpeechSynthesisResult
 
 
@@ -97,6 +97,42 @@ class VoiceActivityDetector(ABC):
         pass
 
 
+class WakeWordDetector(ABC):
+    """Abstract interface for wake word detection (e.g. 'Hey Jarvis')."""
+
+    @abstractmethod
+    def initialize(self) -> None:
+        """Initializes wake word detector resources."""
+        pass
+
+    @abstractmethod
+    def process_frame(self, frame: AudioFrame) -> bool:
+        """Processes an incoming frame and returns True if wake word detected.
+
+        Args:
+            frame: Incoming AudioFrame object.
+
+        Returns:
+            bool: True if wake word phrase matched.
+        """
+        pass
+
+    @abstractmethod
+    def is_detected(self) -> bool:
+        """Returns True if wake word detection condition is met."""
+        pass
+
+    @abstractmethod
+    def reset(self) -> None:
+        """Resets detection trigger state."""
+        pass
+
+    @abstractmethod
+    def shutdown(self) -> None:
+        """Releases wake word detection resources."""
+        pass
+
+
 class SpeechToTextProvider(ABC):
     """Abstract interface for transcribing spoken AudioSegments to plain text."""
 
@@ -114,6 +150,18 @@ class SpeechToTextProvider(ABC):
 
         Returns:
             TranscriptionResult: The transcription output.
+        """
+        pass
+
+    @abstractmethod
+    def stream_transcribe(self, frames: Iterable[AudioFrame]) -> Generator[TranscriptionResult, None, None]:
+        """Streams partial transcription results as audio frames arrive.
+
+        Args:
+            frames: Iterable stream of AudioFrames.
+
+        Yields:
+            TranscriptionResult: Partial transcription updates.
         """
         pass
 
@@ -145,6 +193,18 @@ class TextToSpeechProvider(ABC):
 
         Returns:
             SpeechSynthesisResult: Synthesis metrics.
+        """
+        pass
+
+    @abstractmethod
+    def stream_speak(self, text_stream: Iterable[str]) -> Generator[bytes, None, None]:
+        """Synthesizes streaming text fragments and yields raw PCM audio bytes chunks.
+
+        Args:
+            text_stream: Iterable stream of text fragments or sentences.
+
+        Yields:
+            bytes: Audio PCM bytes.
         """
         pass
 

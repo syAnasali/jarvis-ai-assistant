@@ -1,6 +1,6 @@
 # Project Structure
 
-This document outlines the directory structure and file responsibilities of the Jarvis AI Assistant project repository.
+This document outlines the complete directory structure and module responsibilities of the Jarvis AI Assistant repository.
 
 ---
 
@@ -9,242 +9,211 @@ This document outlines the directory structure and file responsibilities of the 
 ```
 jarvis-ai-assistant/
 ├── app/                              # Primary application source package
-│   ├── __init__.py                   # Package initialization
-│   ├── agent/                        # Agent engine and workflow orchestration
+│   ├── agent/                        # Agent state, context policies, and execution runner
 │   │   ├── __init__.py
-│   │   ├── context.py                # Session metadata and topic tracker
-│   │   ├── controller.py             # Agent orchestrator and workflow gateway
-│   │   ├── conversation.py           # In-memory message history tracking
-│   │   ├── executor.py               # Action router for execution plans
-│   │   ├── intent.py                 # Intent data structures and classifications
-│   │   ├── messages.py               # Message schemas and message roles
-│   │   ├── models.py                 # Dataclasses for request/response payloads
-│   │   └── planner.py                # Classification and plan formulator
-│   ├── ai/                           # AI provider abstractions and model connectors
+│   │   ├── context.py                # Context window budget policy (ConversationContextPolicy)
+│   │   ├── controller.py             # AgentController entry gateway and request router
+│   │   ├── conversation.py           # Session conversation manager wrapper
+│   │   ├── intent.py                 # IntentType classifications and intent models
+│   │   ├── messages.py               # Message roles, Message models, and JSON sanitizers
+│   │   ├── models.py                 # AgentRequest, AgentResponse, AgentRunResult, ToolCall
+│   │   ├── planner.py                # Legacy planner wrapper
+│   │   ├── router.py                 # ExecutionRouter for direct vs planned routing
+│   │   └── runner.py                 # AgentRunner action loop and streaming executor
+│   ├── ai/                           # AI provider abstractions and inference scheduling
 │   │   ├── __init__.py
-│   │   ├── formatter.py              # Message payload translator for models
-│   │   ├── interfaces.py             # BaseLLMProvider abstract definition
-│   │   ├── manager.py                # Provider registry and routing manager
-│   │   ├── parser.py                 # Provider output normalizer
-│   │   ├── prompts.py                # Prompt template manager (placeholders)
-│   │   └── providers/                # Concrete AI API client implementations
+│   │   ├── formatter.py              # Message payload formatter for LLM APIs
+│   │   ├── interfaces.py             # BaseLLMProvider abstract interface
+│   │   ├── manager.py                # LLMManager multi-provider registry
+│   │   ├── parser.py                 # ResponseParser output normalizer
+│   │   ├── prompts.py                # Prompt templates and dynamic system prompts
+│   │   ├── scheduler.py              # Priority InferenceScheduler (Foreground vs Background)
+│   │   └── providers/                # Concrete model clients
 │   │       ├── __init__.py
 │   │       └── ollama.py             # Local Ollama client implementation
+│   ├── approval/                     # Action Approval Runtime
+│   │   ├── __init__.py
+│   │   ├── cli.py                    # Terminal approval UI with msvcrt buffer clearing and native input loop
+│   │   ├── manager.py                # ApprovalManager orchestrator with cancel_all_pending
+│   │   └── repository.py             # SQLiteApprovalRepository implementation
 │   ├── config/                       # Application settings loader
 │   │   ├── __init__.py
 │   │   └── settings.py               # Pydantic Settings env configurations
-│   ├── core/                         # Orchestrator and lifecycle management
+│   ├── conversation/                 # Persistent Conversation Subsystem
 │   │   ├── __init__.py
-│   │   ├── application.py            # Main application lifecycle entry
-│   │   ├── bootstrap.py              # Startup checks and path creator
-│   │   ├── constants.py              # Centralized constants and system paths
-│   │   ├── container.py              # Service-locator dependency container
-│   │   ├── exceptions.py             # Custom Jarvis system exception hierarchy
-│   │   ├── lifecycle.py              # Application lifecycle states enum
+│   │   ├── manager.py                # ConversationManager orchestrator
+│   │   ├── models.py                 # ConversationSession models
+│   │   └── repository.py             # SQLiteConversationRepository implementation
+│   ├── core/                         # Core infrastructure & lifecycle management
+│   │   ├── __init__.py
+│   │   ├── application.py            # Main Application class and waiting_for_approval state
+│   │   ├── bootstrap.py              # Startup environment verifier and path creator
+│   │   ├── constants.py              # Centralized system constants and paths
+│   │   ├── container.py              # ServiceContainer dependency injection registry
+│   │   ├── exceptions.py             # Custom JarvisError exception hierarchy
+│   │   ├── lifecycle.py              # ApplicationState enum
 │   │   └── logger.py                 # Loguru log setup handlers
-│   ├── memory/                       # Persistent memory domain and SQLite store
-│   │   ├── __init__.py               # Package initialization and exports
-│   │   ├── coordinator.py            # MemoryWriteCoordinator for background writes
+│   ├── knowledge/                    # Personal Knowledge Base (RAG) Subsystem
+│   │   ├── __init__.py               # Package exports & factory constructors
+│   │   ├── chunker.py                # ConfigurableTextChunker (Paragraph, Semantic, Recursive, Code-Aware)
+│   │   ├── citations.py              # StructuredCitationFormatter producing clickable file:/// URLs
+│   │   ├── embeddings.py             # OllamaEmbeddingProvider & LocalHashEmbeddingProvider
+│   │   ├── index.py                  # LocalVectorStore performing vector cosine similarity search
+│   │   ├── ingestion.py              # IngestionPipeline (Parse -> Chunk -> Embed -> Index)
+│   │   ├── interfaces.py             # DocumentParser, TextChunker, EmbeddingProvider, VectorStore contracts
+│   │   ├── manager.py                # KnowledgeManager subsystem coordinator & telemetry
+│   │   ├── models.py                 # Document, DocumentChunk, KnowledgeQuery, RetrievalResult, Citation
+│   │   ├── parser.py                 # UnifiedDocumentParser for PDF, DOCX, TXT, MD, HTML, Code, CSV, JSON
+│   │   ├── reranker.py               # ResultRerankerEngine scoring candidate matches & diversity
+│   │   ├── repository.py             # SQLiteKnowledgeRepository implementation (data/jarvis.db)
+│   │   └── retriever.py              # HybridRetrieverEngine combining vector similarity & BM25 keyword search
+│   ├── memory/                       # Persistent Multi-Type Memory Subsystem
+│   │   ├── __init__.py
 │   │   ├── context.py                # MemoryContextBuilder for prompt formatting
+│   │   ├── coordinator.py            # MemoryWriteCoordinator background thread pool
 │   │   ├── extraction.py             # LLMMemoryExtractor
-│   │   ├── guard.py                  # SecretGuard for credential filtering
-│   │   ├── interfaces.py             # MemoryRepository, MemoryRetriever, MemoryExtractor
-│   │   ├── manager.py                # MemoryManager orchestrator class
-│   │   ├── models.py                 # Memory, MemoryType, MemorySource, MemoryCandidate, etc.
+│   │   ├── guard.py                  # SecretGuard credential pattern matcher
+│   │   ├── interfaces.py             # Abstract Memory contracts
+│   │   ├── manager.py                # MemoryManager orchestrator
+│   │   ├── models.py                 # Memory domain models (Fact, Preference, Project, Context)
 │   │   ├── parser.py                 # MemoryExtractionParser
+│   │   ├── related.py                # RelatedMemoryFinder candidate matcher
 │   │   ├── repository.py             # SQLiteMemoryRepository implementation
+│   │   ├── resolution.py             # MemoryResolutionValidator & MemoryResolutionExecutor
+│   │   ├── resolver.py               # LLMMemoryResolver
 │   │   ├── retrieval.py              # LexicalMemoryRetriever
-│   │   ├── validation.py             # MemoryEvidenceValidator for exact-evidence constraints
+│   │   ├── validation.py             # MemoryEvidenceValidator enforcing verbatim constraints
 │   │   └── write_service.py          # MemoryWriteService
-│   ├── prompts/                      # External prompt files (reserved)
-│   │   └── __init__.py               # Reserved for future implementation
-│   ├── services/                     # Third-party integrations (reserved)
-│   │   └── __init__.py               # Reserved for future implementation
-│   ├── tools/                        # Agent execution tools (reserved)
-│   │   └── __init__.py               # Reserved for future implementation
-│   ├── ui/                           # PySide6 Desktop GUI frontend adapter
-│   │   ├── __init__.py               # Package init and exports
+│   ├── planning/                     # Task Planning & Execution Engine
+│   │   ├── __init__.py
+│   │   ├── executor.py               # TaskExecutor for sequential multi-step plans
+│   │   ├── metrics.py                # PlanningMetrics tracking
+│   │   ├── models.py                 # TaskPlan, StepObservation, PlanExecutionResult
+│   │   ├── parser.py                 # PlanParser for structured plan text parsing
+│   │   ├── planner.py                # TaskPlanner formulation engine
+│   │   ├── prompts.py                # Reasoning and synthesis prompts
+│   │   └── validator.py             # PlanValidator step dependency checker
+│   ├── planner/                      # Autonomous Hierarchical Planning Engine
+│   │   ├── __init__.py               # Package exports & factory constructors
+│   │   ├── executor.py               # PlanExecutor delegating steps to ToolExecutor, Vision, Voice, Memory
+│   │   ├── graph.py                  # TaskGraph DAG data structure & topological sort
+│   │   ├── interfaces.py             # HierarchicalPlanner, TaskGraphExecutor, TaskVerifier contracts
+│   │   ├── manager.py                # PlannerManager subsystem coordinator & telemetry
+│   │   ├── models.py                 # Goal, Plan, PlanNode, ExecutionStep, VerificationResult, RecoveryAction, PlanProgress
+│   │   ├── planner.py                # GoalDecomposer & HierarchicalPlanner
+│   │   ├── progress.py               # PlanProgressTracker computing percentage & rendering progress bars
+│   │   ├── recovery.py               # AutonomousRecoveryEngine handling retries & rollbacks
+│   │   ├── repository.py             # SQLitePlanRepository implementation (data/jarvis.db)
+│   │   ├── scheduler.py              # TaskScheduler managing branch execution & queueing
+│   │   └── verifier.py               # OutcomeTaskVerifier checking post-condition outcome rules
+│   ├── services/                     # Domain Services & System Resolvers
+│   │   ├── applications/             # Windows Application Discovery & Resolver
+│   │   │   ├── __init__.py
+│   │   │   ├── models.py
+│   │   │   └── resolver.py
+│   │   ├── desktop/                  # Policy-Controlled Desktop Interaction Service
+│   │   │   ├── __init__.py
+│   │   │   ├── backend.py            # Native Ctypes Windows API backend
+│   │   │   ├── policy.py             # DesktopPolicy key allowlist & bounds checker
+│   │   │   ├── resolver.py           # Window candidate resolver
+│   │   │   └── service.py            # DesktopService with Foreground Safety Guard
+│   │   └── filesystem/               # Root-Bounded Filesystem Service
+│   │       ├── __init__.py
+│   │       ├── policy.py             # FilesystemPolicy logical root mapper
+│   │       ├── resolver.py           # Path resolution and traversal guard
+│   │       └── service.py            # FilesystemService atomic operations
+│   ├── tools/                        # 23 Built-in Execution Tools
+│   │   ├── __init__.py
+│   │   ├── base.py                   # BaseTool abstract base class
+│   │   ├── executor.py               # ToolExecutor with worker pool & timeout policy
+│   │   ├── filter.py                 # Dynamic ToolFilter schema injector
+│   │   ├── models.py                 # ToolPermission & ToolResult schemas
+│   │   ├── registry.py               # ToolRegistry thread-safe catalog
+│   │   └── builtin/                  # Concrete tool implementations
+│   │       ├── applications.py       # Application Discovery & Launch tools
+│   │       ├── desktop.py            # Desktop Window & Automation tools
+│   │       ├── disk.py               # Disk usage inspection tools
+│   │       ├── filesystem.py         # Root-bounded filesystem tools
+│   │       ├── process.py            # Process inspection & search tools
+│   │       └── system.py             # System info & time tools
+│   ├── ui/                           # PySide6 Desktop GUI Package
+│   │   ├── __init__.py
 │   │   ├── app.py                    # MainWindow assembly and controller thread coordinator
-│   │   ├── theme.py                  # Dark stylesheet CSS theme configuration
+│   │   ├── theme.py                  # Dark stylesheet CSS theme
 │   │   ├── threads.py                # Background AgentWorker and VoiceWorker QThreads
 │   │   ├── tray.py                   # System tray icon and context menus
-│   │   └── widgets/                  # Modular component widgets
-│   │       ├── approval_card.py      # Confirmation tool review card with countdown
-│   │       ├── chat_view.py          # Scrollable conversation with markdown and copyable code
-│   │       ├── settings_dialog.py    # Settings dialog form (model, voice, log levels)
-│   │       ├── sidebar.py            # Sidebar state, database metrics, and pending actions
-│   │       ├── status_bar.py         # Latency, scheduler queue, and lifecycle state status bar
-│   │       ├── timeline.py           # execution activity timeline event logger
-│   │       └── top_bar.py            # Branding header, active model, and voice level indicator
-│   ├── utils/                        # Shared helper utilities
-│   │   ├── __init__.py
-│   │   ├── banner.py                 # Console banner text renderer
-│   │   └── id_generator.py           # Centralized message/request ID generator
-│   └── voice/                        # Local voice interaction pipeline package
-│       ├── __init__.py               # Package init and exports
-│       ├── capture.py                # sounddevice microphone capture backend
-│       ├── interfaces.py             # Voice abstractions and interfaces
-│       ├── manager.py                # Voice manager subsystem coordinator
-│       ├── models.py                 # Timezone-aware audio and transcription models
-│       ├── runtime.py                # Push-to-talk loop state machine runtime
-│       ├── stt.py                    # faster-whisper STT provider with CPU fallback
-│       ├── tts.py                    # pyttsx3 local TTS with formatting normalization
-│       └── vad.py                    # numpy RMS energy-based VAD
-├── assets/                           # Static UI media resources (empty)
-├── data/                             # Created application data folder (empty)
-├── docs/                             # System design specifications
-│   ├── ARCHITECTURE.md               # Architecture details and layers
-│   ├── PROJECT_STRUCTURE.md          # Project structure mapping (this file)
-│   ├── REQUEST_FLOW.md               # User prompt request life flow
-│   └── ROADMAP.md                    # Multi-phase project development roadmap
-├── logs/                             # Daily rotating log directory (empty)
-├── scripts/                          # Administration and diagnostic scripts
-│   ├── __init__.py
-│   └── test_ollama_provider.py       # Isolated Ollama client verification script
-├── tests/                            # Diagnostic system test suites (empty)
+│   │   └── widgets/                  # Modular PySide6 Component Widgets
+│   │       ├── approval_card.py      # Confirmation action review card widget
+│   │       ├── chat_view.py          # Scrollable conversation view
+│   │       ├── settings_dialog.py    # Configuration settings dialog
+│   │       ├── sidebar.py            # Session list and metrics sidebar
+│   │       ├── status_bar.py         # System status bar
+│   │       ├── timeline.py           # Execution activity timeline widget
+│   │       └── top_bar.py            # Top header bar
+│   └── voice/                        # Full-Duplex Offline Voice Runtime Package
+│       ├── __init__.py               # Package exports & factory constructors
+│       ├── capture.py                # PyAudio microphone capture stream
+│       ├── interfaces.py             # AudioCapture, VAD, WakeWordDetector, STT, and TTS interfaces
+│       ├── manager.py                # VoiceManager subsystem coordinator & telemetry
+│       ├── models.py                 # AudioFrame, AudioSegment, TranscriptionResult, SpeechSynthesisResult, VoiceState
+│       ├── pipeline.py               # Full-duplex VoicePipeline with sentence-level streaming TTS & spoken approvals
+│       ├── playback.py               # PlaybackManager handling audio stream queueing & barge-in interruption
+│       ├── runtime.py                # Push-to-talk state machine and AgentController adapter loop
+│       ├── session.py                # VoiceSession tracker maintaining state machine & metrics
+│       ├── stt.py                    # FasterWhisperProvider (tiny, base, small, medium) with GPU/CPU fallback
+│       ├── tts.py                    # PiperProvider & PyTTSx3TTSProvider local speech synthesis engines
+│       ├── vad.py                    # EnergyBasedVAD dynamic speech & silence boundary detector
+│       └── wakeword.py               # LocalWakeWordDetector supporting "Hey Jarvis" and mode configurations
+│   └── vision/                       # Provider-Neutral Local Vision Runtime Package
+│       ├── __init__.py               # Package exports & factory constructors
+│       ├── annotation.py             # ImageAnnotator bounding box overlays, highlights, and crops
+│       ├── capture.py                # PILScreenCapturer full-screen, active window, and region capture
+│       ├── clipboard.py              # PILClipboardImageRetriever system clipboard image extraction
+│       ├── interfaces.py             # VisionProvider, ScreenCapturer, ClipboardImageRetriever, OCREngine contracts
+│       ├── manager.py                # VisionManager subsystem coordinator & telemetry
+│       ├── models.py                 # VisionImage, VisionRequest, VisionResponse, OCRResult, ImageMetadata
+│       ├── ocr.py                    # LocalOCREngine text, code, terminal, and dialog box extractor
+│       ├── pipeline.py               # VisionPipeline image intake, OCR, VLM analysis, and token streaming
+│       └── providers.py              # OllamaVisionProvider (llava, qwen-vl) and MockVisionProvider fallback
+├── assets/                           # Static UI media resources
+├── data/                             # Application database directory (`jarvis.db`)
+├── docs/                             # Architecture and design guides
+│   ├── ARCHITECTURE.md
+│   ├── PROJECT_STRUCTURE.md
+│   ├── REQUEST_FLOW.md
+│   └── ROADMAP.md
+├── logs/                             # Daily rotating log files (`jarvis.log`)
+├── scripts/                          # Admin, validation, and diagnostic scripts
+│   ├── run_production_validation.py  # Master Developer Validation Suite
+│   ├── regression/                   # Subsystem regression suite (`run_all.py`)
+│   └── validation/                   # End-to-end integration, stress, and benchmark suites
+│       ├── test_approval_workflow_integration.py
+│       ├── test_end_to_end_integration.py
+│       ├── test_performance_benchmarks.py
+│       └── test_stress_suite.py
+├── tests/                            # Pytest Test Suite
+│   ├── integration/                  # Integration test suite (`test_blocking_approval_dialog.py`)
+│   └── unit/                         # Unit tests (400+ unit test files)
 ├── .env.example                      # Settings placeholders template
-├── .gitignore                        # Filesystem tracking exclusions list
-├── LICENSE                           # Project terms (empty by default)
-├── main.py                           # Application initialization entry point
+├── .gitignore                        # Git exclusion rules
+├── LICENSE                           # MIT License
+├── main.py                           # Primary application entrypoint
 ├── pyproject.toml                    # Pytest/Ruff build configuration
 └── requirements.txt                  # System dependency specifications
 ```
 
 ---
 
-## Directory Responsibilities
+## Package Responsibilities Summary
 
-### `app/agent/`
-Contains the agent's core decision, state, and conversation flow logic.
-- **`controller.py`**: Coordinates request processing, user interactions, message history, plan creation, execution, and outputs.
-- **`planner.py`**: Classifies inputs to formulate an `ExecutionPlan`. Currently hardcoded to target `CHAT` LLM generation.
-- **`executor.py`**: Routes request executions based on plans, calling `LLMManager` or throwing errors for unimplemented structures.
-- **`intent.py`**: Defines the `IntentType` enum (e.g. `CHAT`, `TOOL`) and `Intent` metadata dataclass.
-- **`conversation.py`**: Holds session-specific message logs in-memory.
-- **`context.py`**: Manages volatile session details like current topics and active request structures.
-- **`messages.py`**: Implements the immutable `Message` dataclass and `MessageRole` enum.
-- **`models.py`**: Defines communication dataclasses (`AgentRequest`, `AgentResponse`, `ToolCall`).
-- **`response.py`**: Creational builder class for constructing standardized `AgentResponse` instances.
-
-### `app/ai/`
-Handles LLM backend connections, formatting pipelines, and parser boundaries.
-- **`interfaces.py`**: Defines the `BaseLLMProvider` abstract base class contract.
-- **`manager.py`**: Implements `LLMManager`, coordinating registrations and switches between active provider targets.
-- **`formatter.py`**: Translates internal message structures into API-ready payload dictionaries.
-- **`parser.py`**: Extracts raw text blocks from model responses (supporting dictionaries and SDK payloads).
-- **`prompts.py`**: Serves default instruction prompts.
-- **`providers/ollama.py`**: Implements model communication with local Ollama APIs using the official `ollama` SDK.
-
-### `app/config/`
-Manages configuration and environments.
-- **`settings.py`**: Loads and validates environment configurations using Pydantic Settings.
-
-### `app/core/`
-Manages application lifecycles, bootstraps, setups, and common configurations.
-- **`application.py`**: Coordinates setup boundaries, service registries, and triggers terminal I/O.
-- **`bootstrap.py`**: Verifies directories and activates default log formatters.
-- **`constants.py`**: Houses application-wide constants and filesystem paths.
-- **`container.py`**: Provides a service-locator registry for system singletons.
-- **`exceptions.py`**: Implements the custom `JarvisError` hierarchy.
-- **`lifecycle.py`**: Defines the `ApplicationState` enum.
-- **`logger.py`**: Sets up rotating and console loggers via Loguru.
-
-### `app/memory/`
-Manages durable facts, projects, preferences, and assistant context persistence.
-- **`models.py`**: Declares Memory, MemoryType, MemorySource, MemoryCandidate, etc.
-- **`interfaces.py`**: Defines abstract base class contracts for repositories, retrievers, and extractors.
-- **`repository.py`**: Coordinates raw SQLite table CRUD executions.
-- **`manager.py`**: Handles validation rules, timezone-aware UTC datetime timestamps, and delegates operations to injected repositories.
-- **`retrieval.py`**: Token-based deterministic lexical retriever.
-- **`context.py`**: Compiles matches into system prompt context with constraint enforcement.
-- **`extraction.py`**: LLM memory candidate extractor using a dedicated profile.
-- **`parser.py`**: Parser to extract memory list JSON.
-- **`validation.py`**: MemoryEvidenceValidator enforcing verbatim checking and claim-support conservatism.
-- **`write_service.py`**: Coordinates extraction, confidence filter, secret guard, duplicate checks, and writes.
-- **`coordinator.py`**: MemoryWriteCoordinator orchestrating background async executions and resource serialization.
-- **`guard.py`**: Narrow deterministic pattern matching secret guard.
-
-### `app/services/`
-Provides domain services and business logic abstractions.
-- **`filesystem/`**: Safe root-bounded filesystem policy and service implementation.
-- **`desktop/`**: Policy-controlled Windows desktop interaction service, policy engine, ctypes backend, and candidate resolver.
-
-### `app/tools/`
-Manages local executable system tools with permission levels.
-- **`base.py`**: Defines abstract `BaseTool` class contract.
-- **`models.py`**: Defines `ToolPermission` and `ToolResult` schemas.
-- **`registry.py`**: Implements `ToolRegistry` to register and retrieve built-in tools.
-- **`executor.py`**: Implements `ToolExecutor` enforcing safety/permission restrictions.
-- **`builtin/system.py`**: Built-in time and system information tools.
-- **`builtin/disk.py`**: Disk usage inspection tools.
-- **`builtin/process.py`**: Active process enumeration and search tools.
-- **`builtin/applications.py`**: Windows registry-based application discovery tools.
-- **`builtin/filesystem.py`**: Safe non-recursive list directory and bounded text file reading tools.
-- **`builtin/desktop.py`**: Policy-controlled desktop active/visible window, focus, type text, press key, press hotkey, and click screen tools.
-
-### `app/voice/`
-Implements the local offline voice interaction pipeline.
-- **`models.py`**: Timezone-aware audio and transcription/synthesis result models.
-- **`interfaces.py`**: AudioCapture, VoiceActivityDetector, SpeechToTextProvider, TextToSpeechProvider.
-- **`capture.py`**: sounddevice and PortAudio-based microphone capture.
-- **`vad.py`**: Deterministic RMS energy-based voice activity detector.
-- **`stt.py`**: faster-whisper speech-to-text provider with dynamic CPU fallback.
-- **`tts.py`**: pyttsx3/SAPI5 offline speech synthesis with text formatting normalization.
-- **`manager.py`**: Subsystem coordinator and metrics tracker.
-- **`runtime.py`**: Push-to-talk state machine and AgentController adapter loop.
-
-### `app/utils/`
-Provides shared utilities.
-- **`id_generator.py`**: Centralizes unique ID generation for messages, requests, responses, and memories.
-- **`banner.py`**: Houses console startup and shutdown banners.
-
-### `app/ui/`
-Implements the PySide6 professional desktop user interface.
-- **`app.py`**: MainWindow orchestrator, thread signaling, status monitoring, and layout.
-- **`theme.py`**: Dark style sheet configurations, colors, and layout metrics.
-- **`threads.py`**: Asynchronous `AgentWorker` and `VoiceWorker` background runners.
-- **`tray.py`**: System tray integration, tooltip, contextual menus, and minimize behavior.
-- **`widgets/`**: Subdirectory containing modular GUI widgets:
-  - `top_bar.py`: Branding, active model, running status, and microphone level.
-  - `chat_view.py`: Conversation bubbles supporting copyable code blocks and Markdown.
-  - `sidebar.py`: State panels, counts, database metrics, and active pending list.
-  - `status_bar.py`: Provider info, execution latency, and scheduler queue size.
-  - `timeline.py`: Event timeline logs with timezone-aware timestamps.
-  - `approval_card.py`: Review card for blocked confirmation tools with countdown timer.
-  - `settings_dialog.py`: Configurations settings editor (Ollama, voice, logs, tray behavior).
-
-### Reserved Packages (Reserved for Future Implementation)
-The following directories are empty placeholder packages (except for `__init__.py`) reserved for future phases of the project roadmap:
-- **`app/prompts/`**: Externalized prompt files.
-
----
-
-## Scripts & Tests
-
-- **`scripts/`**: Administration and diagnostic scripts.
-  - **`test_ollama_provider.py`**: Isolated Ollama client verification script.
-  - **`test_memory_retrieval.py`**: Lexical memory retriever diagnostics.
-  - **`test_agent_memory.py`**: E2E memory retrieval test.
-  - **`test_memory_extraction.py`**: Memory extraction diagnostics.
-  - **`test_memory_write.py`**: Memory write service diagnostics.
-  - **`test_memory_restart.py`**: Cross-restart memory persistence diagnostics.
-  - **`test_memory_extraction_precision.py`**: Verbatim evidence and claim-support conservatism diagnostic.
-  - **`test_memory_response_latency.py`**: Measure response latency and verify background non-blocking execution.
-  - **`test_local_capabilities.py`**: Verify local system info, disk space, and process/app inspection.
-  - **`test_filesystem_tools.py`**: Diagnostic testing for directory listing and safe text file reading.
-  - **`test_local_tool_selection.py`**: Verify semantic tool selection rules via Ollama client.
-  - **`test_planned_local_environment.py`**: Verify E2E planning and execution for local environment analysis.
-  - **`test_desktop_policy.py`**: Verify allowed keys, hotkeys canonicalizations, screen boundaries validation.
-  - **`test_window_discovery.py`**: E2E native window enumeration and foreground window details query.
-  - **`test_desktop_approval.py`**: Verify typing tool call confirmation suspense, database insertion, and active focus safety guard.
-  - **`test_agent_desktop.py`**: E2E direct request to type text verifying prompt parsing, suspension, approval, and execution.
-  - **`test_planned_desktop.py`**: E2E planned request (focus window then type text) verifying planner output, step-by-step executions, double approval suspenses, and final synthesis.
-  - **`test_voice_models.py`**: Verify model validation and state transitions.
-  - **`test_voice_pipeline_fake.py`**: Dry-run of voice pipeline using fake capture, VAD, STT, and TTS.
-  - **`test_microphone_capture.py`**: Capture raw audio and verify VAD boundaries from default microphone.
-  - **`test_local_stt.py`**: Transcribe an in-memory segment locally using faster-whisper.
-  - **`test_local_tts.py`**: Speak text locally using pyttsx3.
-  - **`test_voice_runtime.py`**: E2E voice runtime request processing and speech synthesis.
-  - **`test_voice_approval_safety.py`**: Verify that voice-origin requests trigger WAITING_APPROVAL block and cannot auto-approve.
-  - **`test_ui_diagnostics.py`**: Dry-run tests for GUI thread responsiveness, slots, signals, voice, and system tray.
-- **`tests/`**: Test suite directory containing unit tests covering the core agent engine, memory retrieval, context building, memory extraction parser, memory write service, local capability tools, filesystem policy/resolver/service, desktop interaction subsystem (`test_desktop_service.py`), the voice subsystem (`test_voice_models.py`, `test_voice_state.py`, `test_voice_capture.py`, `test_voice_vad.py`, `test_voice_stt.py`, `test_voice_tts.py`, `test_voice_manager.py`, `test_voice_runtime.py`), and the desktop UI subsystem (`test_ui_widgets.py`).
+- **`app/agent/`**: Request routing (`ExecutionRouter`), action loop execution (`AgentRunner`), conversation context budget policy (`ConversationContextPolicy`), and gateway orchestrator (`AgentController`).
+- **`app/ai/`**: LLM provider contracts (`BaseLLMProvider`), multi-provider client manager (`LLMManager`), response chunking parser (`ResponseParser`), and priority queue scheduler (`InferenceScheduler`).
+- **`app/approval/`**: Synchronized blocking action approval runtime (`ApprovalManager`), SQLite pending actions repository (`SQLiteApprovalRepository`), and CLI terminal approval UI (`prompt_user_approval`).
+- **`app/conversation/`**: Persistent SQLite conversation history database repository and session manager.
+- **`app/memory/`**: Persistent multi-type memory engine, hybrid lexical retriever, evidence validator, and background extraction coordinator.
+- **`app/planning/`**: Multi-step TaskPlan formulation engine, step validator, and sequential TaskExecutor.
+- **`app/services/`**: Domain services for root-bounded filesystem operations, Ctypes Windows desktop automation, and application discovery.
+- **`app/tools/`**: Catalog of 23 built-in system tools, ToolExecutor worker pool, permissions, and dynamic ToolFilter schema injector.
+- **`app/ui/`**: Professional PySide6 desktop GUI, QThread workers, approval cards, system tray launcher, and dark theme.
+- **`app/voice/`**: Offline speech recognition (`faster-whisper`), VAD, speech synthesis (`pyttsx3`), push-to-talk runtime, and air-gapped approval safety guard.
+- **`app/core/`**: Central application orchestrator, service container, lifecycle state machine, bootstrap verifier, and Loguru logging wrapper.

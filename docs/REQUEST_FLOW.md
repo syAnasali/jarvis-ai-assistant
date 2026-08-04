@@ -1,107 +1,143 @@
 # Request Processing Flow
 
-This document details the step-by-step lifecycle of a user request processing turn in the Jarvis AI Assistant.
+This document details the step-by-step lifecycle of user requests in the Jarvis AI Assistant across all processing modes (Direct Chat, Tool Execution with Blocking Action Approval, Multi-step Task Planning, Memory Retrieval, Voice Input, and Desktop GUI).
 
 ---
 
-## 1. Overview
+## 1. Direct Chat Request Flow
 
-Every user input entered in the terminal traverses the orchestration layers, gets compiled into active session history, generates an execution plan, sends requests to the local model provider, and saves the generated model response before returning it to the user.
-
----
-
-## 2. Request Sequence Diagram
-
-The following ASCII diagram illustrates the sequential function calls and returns across components during a single request turn:
-
-```
-User        Application   AgentController   Conversation    Planner      Executor    LLMManager  OllamaProvider    Ollama    ResponseParser
- │               │               │               │             │            │            │             │              │              │
- │──(Text Input)►│               │               │             │            │            │             │              │              │
- │               │──(Request)───►│               │             │            │            │             │              │              │
- │               │               │──(Add Msg)───►│             │            │            │             │              │              │
- │               │               │               │             │            │            │             │              │              │
- │               │               │──(Create Plan)─────────────►│            │            │             │              │              │
- │               │               │◄─(ExecutionPlan)────────────│            │            │             │              │              │
- │               │               │                                          │            │             │              │              │
- │               │               │──(Format Payload)──► MessageFormatter    │            │             │              │              │
- │               │               │                                          │            │             │              │              │
- │               │               │──(Execute Plan)─────────────────────────►│            │             │              │              │
- │               │               │                                          │──(Generate)►│            │              │              │
- │               │               │                                          │            │──(Generate)►│              │              │
- │               │               │                                          │            │             │──(chat API)─►│              │
- │               │               │                                          │            │             │◄─(Response)──│              │
- │               │               │                                          │            │◄─(Response)─│              │              │
- │               │               │                                          │◄─(Response)│              │              │              │
- │               │               │                                          │            │             │              │              │
- │               │               │──(Parse Response)────────────────────────┼────────────┼─────────────┼──────────────┼─────────────►│
- │               │               │◄─(AgentResponse)─────────────────────────┼────────────┼─────────────┼──────────────┼──────────────│
- │               │               │                                          │            │             │              │              │
- │               │               │──(Add Msg)───►│             │            │            │             │              │              │
- │               │◄─(AgentResponse)──────────────│             │            │            │             │              │              │
- │◄─(Display)────│               │               │             │            │            │             │              │              │
+```mermaid
+sequenceDiagram
+    participant User
+    participant App as Application / CLI
+    participant Controller as AgentController
+    participant Router as ExecutionRouter
+    participant DB as SQLite Conversation DB
+    participant Memory as MemoryRetriever
+    participant LLM as LLMManager / Ollama
+    
+    User->>App: Input text ("Hello Jarvis")
+    App->>Controller: process_request_stream(request)
+    Controller->>DB: Add user Message
+    Controller->>Memory: retrieve(request.text)
+    Memory-->>Controller: MemoryContext ([RELEVANT LONG-TERM MEMORY])
+    Controller->>Router: classify_intent(request)
+    Router-->>Controller: Intent (CHAT, DIRECT)
+    Controller->>LLM: run_stream(formatted_messages, memory_context)
+    LLM-->>App: yield token chunks ("Jarvis > Hello!...")
+    Controller->>DB: Add assistant Message
+    Controller->>Memory: schedule_background_extraction(request, response)
 ```
 
 ---
 
-## 3. Detailed Request Lifecycle
+## 2. Tool Execution & Synchronized Blocking Action Approval Flow
 
-1. **Terminal Input**: The user enters a message string at the `You > ` command-line prompt.
-2. **`AgentRequest` Creation**: The terminal loop wraps the text input in an `AgentRequest` dataclass, assigning a unique identifier (generated by `generate_request_id()`) and metadata.
-3. **`AgentController` Intake**: The request is passed into `AgentController.process_request(request)`.
-4. **`ContextManager` Active Request Update**: The controller stores the request reference in `ContextManager.active_request` to track active session operations.
-5. **User Message Creation**: The controller creates a user-role `Message` object using a unique message ID (generated by `generate_message_id()`).
-6. **Conversation Update (User)**: The user message is appended to the active `Conversation` log using `Conversation.add_message()`.
-7. **`Planner.create_plan()`**: The controller forwards the request details to the `Planner` to construct the execution plan.
-8. **`ExecutionPlan` Creation**: The `Planner` creates an `ExecutionPlan` detailing requirements (`intent=IntentType.CHAT`, `use_llm=True`, `use_tools=False`, `use_memory=False`).
-9. **Message Formatting**: The controller triggers `MessageFormatter.format_history()` on the conversation log history. This translates internal message structures into lists of raw dictionary records containing role and content mapping.
-10. **`Executor` Execution**: The controller calls `Executor.execute()`, forwarding the generated `ExecutionPlan` and the formatted message histories.
-11. **`LLMManager.generate()`**: Recognizing the plan requires the LLM path (`use_llm=True`), the `Executor` delegates generation to `LLMManager.generate()`.
-12. **Active Provider Delegation**: The `LLMManager` resolves the active provider (configured as `"ollama"`) and passes message payloads to `OllamaProvider.generate()`.
-13. **`OllamaProvider.generate()`**: The provider invokes `client.chat()` via the official `ollama` SDK. This triggers a synchronous REST API call to the local Ollama server.
-14. **Ollama ChatResponse Returned**: The local Ollama server executes model inference on the `qwen3` parameters and returns the raw response dictionary or `ChatResponse` object to the provider.
-15. **`ResponseParser.parse_response()`**: The raw provider response is forwarded to the `ResponseParser` instance.
-16. **`AgentResponse` Creation**: The parser inspects the response structures, extracts the assistant text content, constructs a unique response ID (generated by `generate_response_id()`), and returns a populated `AgentResponse` object.
-17. **Assistant Message Creation**: The controller maps the assistant text to a new assistant-role `Message` object.
-18. **Conversation Update (Assistant)**: The assistant message is appended to `Conversation` history, preserving context for future prompt turns.
-19. **Terminal Output**: The controller returns the completed `AgentResponse` to `Application`, which displays the response text behind the `Jarvis > ` prompt.
+When a request requires executing a tool marked with `ToolPermission.CONFIRMATION` (e.g. `delete_path`, `write_text_file`, `launch_application`, `focus_window`, `type_text`):
 
----
-
-## 4. Conversation Context
-
-Dialogue state is tracked solely in-memory within the active session scope:
-- **Session History Only**: Conversation contexts are tracked in-memory using `Conversation` lists during the application runtime cycle. No persistent storage or database writes are executed.
-- **Payload Formatting**: When formatting conversation histories, `MessageFormatter` converts the message list sequentially. This list is passed to the LLM backend during each interaction, giving the model context of past messages in the active dialogue.
-- **No Database Persistence**: Once the terminal command process exits, all dialogue context and messages are permanently lost.
-
----
-
-## 5. Error Flow
-
-Errors occurring during execution are managed within explicit boundaries:
-- **`LLMError`**: Raised in `OllamaProvider` or `LLMManager` if server connections fail, API errors occur, or if the configured local model is not pulled. In `Application`, these errors print a controlled `Jarvis > [Error] ...` message to the terminal instead of traceback printouts.
-- **`ApplicationStartupError`**: Thrown during bootstrap if critical folders cannot be created or if configurations are invalid. This error aborts the launch cycle and prints error diagnostics to standard error stream descriptors.
-- **`JarvisError`**: Base class of all custom application exceptions. Used to catch expected application-level errors.
-- **Unexpected Exceptions**: Generic exceptions (e.g. `KeyboardInterrupt`, filesystem errors) are caught. If the configuration is set to `log_level=DEBUG` or `log_level=TRACE`, tracebacks are output to help diagnose issues; otherwise, simple error summaries print to the terminal.
+```mermaid
+sequenceDiagram
+    participant User
+    participant CLI as Terminal CLI UI
+    participant App as Application
+    participant Controller as AgentController
+    participant Runner as AgentRunner
+    participant ToolExec as ToolExecutor
+    participant ApprovalMgr as ApprovalManager
+    
+    User->>CLI: Input ("Delete temp/file.txt")
+    CLI->>Controller: process_request_stream(request)
+    Controller->>Runner: run_stream()
+    Runner->>ToolExec: execute(ToolCall("delete_path"))
+    ToolExec->>ApprovalMgr: create_pending_action("delete_path")
+    ApprovalMgr-->>ToolExec: action_id = "action_123"
+    ToolExec-->>Runner: Execution suspended (confirmation_required=True)
+    Runner-->>Controller: Yield message (confirmation_required=True, pending_action_id="action_123")
+    Controller->>App: Intercept confirmation_required metadata
+    App->>App: Set waiting_for_approval = True
+    App->>CLI: prompt_user_approval(tool_name, args)
+    Note over CLI: Purge stdin buffer (msvcrt.kbhit)<br/>Block OS thread on native input()
+    CLI-->>App: User inputs 'y' (True)
+    App->>ApprovalMgr: approve("action_123")
+    App->>Controller: process_request_stream(request, approval_action_id="action_123")
+    Controller->>Runner: Resume execution
+    Runner->>ToolExec: execute(ToolCall, approval_action_id="action_123")
+    ToolExec->>ToolExec: Consume approval & run tool
+    ToolExec-->>Runner: ToolResult(success=True)
+    Runner->>LLM: Final synthesis prompt with Tool output
+    LLM-->>CLI: yield token chunks ("File deleted successfully.")
+    App->>App: Set waiting_for_approval = False
+```
 
 ---
 
-## 6. Shutdown Flow
+## 3. Multi-Step Task Planner Execution Flow
 
-1. **Shutdown Command**: The user enters `exit`, `quit`, or `bye` at the prompt, or presses `Ctrl+C` (`KeyboardInterrupt`) or `Ctrl+D` (`EOFError`).
-2. **Break Loop**: The `Application` execution loop detects the shutdown input and breaks the CLI loop.
-3. **Shutdown Trigger**: `Application.shutdown()` is called in the `finally` block of `Application.run()`.
-4. **State Transition**: The application state transitions to `STOPPING`.
-5. **Provider Disposals**: The orchestrator checks if `LLMManager` is registered. If it is, the active provider's `shutdown()` method is called to release connections.
-6. **Logging Closure**: Final logs are committed, and the state resets to `STOPPED` before exiting the system.
+For complex tasks requiring multiple steps (e.g. "Find running process chrome, inspect disk usage, and write summary to log.txt"):
+
+```mermaid
+sequenceDiagram
+    participant Controller as AgentController
+    participant Router as ExecutionRouter
+    participant Planner as TaskPlanner
+    participant Executor as TaskExecutor
+    participant Tools as ToolExecutor
+    
+    Controller->>Router: classify_intent(request)
+    Router-->>Controller: Intent (PLANNED)
+    Controller->>Planner: create_plan(request)
+    Planner-->>Controller: TaskPlan ([Step 1: TOOL, Step 2: REASONING, Step 3: SYNTHESIS])
+    Controller->>Executor: execute(plan)
+    loop For Each Plan Step
+        alt Step is TOOL
+            Executor->>Tools: execute(Step.tool_name, Step.arguments)
+            Tools-->>Executor: StepObservation
+        else Step is REASONING
+            Executor->>Executor: Evaluate intermediate observations
+        end
+    end
+    Executor->>LLM: Synthesize observations into final user response
+    Executor-->>Controller: PlanExecutionResult
+```
 
 ---
 
-## 7. Current Flow Limitations
+## 4. Persistent Memory Retrieval & Background Extraction Flow
 
-- **No Output Streaming**: The application blocks and waits until Ollama yields the complete response, preventing real-time printing.
-- **No Tool Branching**: The `Executor` raises a `NotImplementedError` if the plan sets `use_tools=True`.
-- **No Memory Retrieval**: The `Executor` raises a `NotImplementedError` if the plan sets `use_memory=True`.
-- **Static Plan Generation**: The `Planner` does not classify intents dynamically; it hardcodes the plan route to `CHAT` (using the LLM).
-- **Synchronous Model Inference**: Ollama requests run synchronously, blocking the CLI process from executing background tasks during generation.
+1. **Foreground Retrieval Phase**:
+   - Before building system prompts, `LexicalMemoryRetriever` queries the SQLite database for stored user facts and preferences matching key tokens in the user request.
+   - Matched items are formatted by `MemoryContextBuilder` into a structured prompt section:
+     ```markdown
+     [RELEVANT LONG-TERM MEMORY]
+     - User prefers dark mode.
+     - User workspace directory is C:\Projects.
+     ```
+   - System prompt token budget is preserved.
+
+2. **Background Extraction Phase**:
+   - Immediately after the assistant response is delivered to the user, `AgentController` schedules an asynchronous extraction task.
+   - `MemoryWriteCoordinator` runs `LLMMemoryExtractor` on a dedicated background worker thread (`InferencePriority.BACKGROUND`).
+   - `MemoryEvidenceValidator` verifies that extracted memory candidates match verbatim text evidence from the user prompt.
+   - Validated items are saved to the `memories` table in SQLite (`data/jarvis.db`).
+
+---
+
+## 5. Offline Voice Push-to-Talk Interaction Flow
+
+1. **Trigger**: User presses hotkey or spacebar in Voice Mode.
+2. **Audio Capture**: `AudioCapture` records microphone input into 16kHz PCM audio frames.
+3. **Speech Activity Detection**: `VoiceActivityDetector` isolates voice segments using RMS energy boundaries.
+4. **Offline Speech-to-Text**: `FasterWhisperSTTProvider` transcribes audio locally (using GPU CUDA or automatic CPU fallback).
+5. **Air-Gapped Safety Check**: If the transcribed command requests a confirmation-level tool (e.g. "delete directory"), execution is suspended to `WAITING_APPROVAL`, speech output announces the required approval, and execution blocks until explicit terminal approval is granted. Spoken commands cannot bypass tool approvals.
+6. **Speech Synthesis**: `PyTTSx3TTSProvider` strips markdown formatting and speaks the final assistant response.
+
+---
+
+## 6. Desktop GUI Event & Synchronization Flow
+
+1. **User Action**: User types prompt or selects session in PySide6 `AppWindow`.
+2. **Background Execution**: `AgentWorker` background `QThread` receives `AgentRequest` and runs `AgentController.process_request_stream()`.
+3. **Signal Emission**:
+   - `chunk_received(str)`: Emitted per token chunk to update `ChatWidget` live text view.
+   - `approval_requested(action_id, tool_name, reason)`: Emitted when execution is suspended for confirmation, injecting an `ApprovalCardWidget` into the chat pane.
+   - `response_completed(Message)`: Emitted when turn finishes, updating sidebar database metrics and history lists.

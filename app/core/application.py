@@ -344,6 +344,56 @@ class Application:
         registry.register(PressHotkeyTool(desktop_service, approval_manager))
         registry.register(ClickScreenTool(desktop_service, approval_manager))
 
+        # Register Vision Subsystem & Tools
+        from app.vision.manager import VisionManager
+        from app.tools.builtin.vision import (
+            CaptureScreenTool,
+            ExplainErrorTool,
+            ReadClipboardImageTool,
+            AnalyzeRegionTool,
+        )
+        vision_manager = VisionManager()
+        self.container.register("vision_manager", vision_manager)
+        registry.register(CaptureScreenTool(vision_manager))
+        registry.register(ExplainErrorTool(vision_manager))
+        registry.register(ReadClipboardImageTool(vision_manager))
+        registry.register(AnalyzeRegionTool(vision_manager))
+
+        # Register Hierarchical Planner Subsystem & Tools
+        from app.planner.manager import PlannerManager
+        from app.tools.builtin.planner import (
+            DecomposeGoalTool,
+            ExecutePlanTool,
+            GetPlanStatusTool,
+            ControlPlanTool,
+        )
+        planner_manager = PlannerManager(
+            tool_executor=executor if 'executor' in locals() else None,
+            vision_pipeline=vision_manager.pipeline
+        )
+        self.container.register("planner_manager", planner_manager)
+        registry.register(DecomposeGoalTool(planner_manager))
+        registry.register(ExecutePlanTool(planner_manager))
+        registry.register(GetPlanStatusTool(planner_manager))
+        registry.register(ControlPlanTool(planner_manager))
+
+        # Register Personal Knowledge Base (RAG) Subsystem & Tools
+        from app.knowledge.manager import KnowledgeManager
+        from app.tools.builtin.knowledge import (
+            IngestDocumentTool,
+            SearchKnowledgeTool,
+            SummarizeDocumentTool,
+            ListDocumentsTool,
+            RemoveDocumentTool,
+        )
+        knowledge_manager = KnowledgeManager()
+        self.container.register("knowledge_manager", knowledge_manager)
+        registry.register(IngestDocumentTool(knowledge_manager))
+        registry.register(SearchKnowledgeTool(knowledge_manager))
+        registry.register(SummarizeDocumentTool(knowledge_manager))
+        registry.register(ListDocumentsTool(knowledge_manager))
+        registry.register(RemoveDocumentTool(knowledge_manager))
+
         # 3. Create ToolExecutor with approval manager
         executor = ToolExecutor(registry, approval_manager)
 
