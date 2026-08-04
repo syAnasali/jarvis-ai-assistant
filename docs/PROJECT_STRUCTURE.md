@@ -66,7 +66,19 @@ jarvis-ai-assistant/
 │   │   ├── parser.py                 # UnifiedDocumentParser for PDF, DOCX, TXT, MD, HTML, Code, CSV, JSON
 │   │   ├── reranker.py               # ResultRerankerEngine scoring candidate matches & diversity
 │   │   ├── repository.py             # SQLiteKnowledgeRepository implementation (data/jarvis.db)
-│   │   └── retriever.py              # HybridRetrieverEngine combining vector similarity & BM25 keyword search
+│   ├── observability/                # Observability & Developer Console Subsystem
+│   │   ├── __init__.py               # Package exports
+│   │   ├── dashboard.py              # HealthDashboardAPI providing status endpoints
+│   │   ├── events.py                 # System observability events
+│   │   ├── exceptions.py             # Observability exception hierarchy
+│   │   ├── exporters.py              # TelemetryExporterImpl producing JSON, CSV, and Markdown exports
+│   │   ├── interfaces.py             # MetricsCollector, Tracer, TimelineRecorder, Exporter contracts
+│   │   ├── manager.py                # ObservabilityManager subsystem coordinator
+│   │   ├── metrics.py                # RuntimeMetricsCollector aggregating LLM, Agent, Memory, Knowledge, Planner, Voice, Vision, Plugin metrics
+│   │   ├── models.py                 # MetricRecord, Span, TimelineEvent, HealthStatus, TelemetrySummary
+│   │   ├── repository.py             # SQLiteMetricsRepository storing metrics, traces, and timeline events in data/jarvis.db
+│   │   ├── timeline.py               # EventTimelineRecorder capturing request processing steps
+│   │   └── tracing.py                # DistributedTracer managing trace IDs and span hierarchies
 │   ├── plugins/                      # Provider-Neutral Plugin SDK & Extension Framework
 │   │   ├── __init__.py               # Package exports
 │   │   ├── events.py                 # PluginEventBus thread-safe publish/subscribe event bus

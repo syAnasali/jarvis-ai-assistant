@@ -113,6 +113,11 @@ class Settings(BaseSettings):
     plugins_allow_hot_reload: bool = True
     plugins_strict_permissions: bool = True
 
+    observability_enabled: bool = True
+    observability_persistence_enabled: bool = True
+    observability_retention_days: int = 7
+    observability_trace_sampling_rate: float = 1.0
+
 
     @classmethod
     def validate_relationships(cls, values: dict) -> None:

@@ -1,0 +1,16 @@
+{
+  "metrics": {
+    "llm": {},
+    "agent": {
+      "tool_calls": 3.0
+    },
+    "memory": {},
+    "knowledge": {},
+    "planner": {},
+    "voice": {},
+    "vision": {},
+    "plugin": {}
+  },
+  "spans": [],
+  "timeline": []
+}

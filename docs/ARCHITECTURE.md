@@ -239,5 +239,21 @@ Jarvis incorporates an isolated, provider-neutral Plugin SDK (`app/plugins/`) al
 - **`PluginManager`**: Catalog registry, enabling/disabling, health reporting, and runtime `reload_plugin(plugin_id)` hot reloading (`app/plugins/manager.py`).
 - **Built-in System Tools**: `list_plugins`, `enable_plugin`, `disable_plugin`, `reload_plugin`.
 
+---
+
+## 18. Observability & Developer Console Subsystem (`app/observability/`)
+
+Jarvis incorporates a production-quality Observability subsystem (`app/observability/`) that collects live runtime metrics, distributed tracing spans, and chronological request event timelines across all 8 major subsystems.
+
+### Key Observability Architectural Components:
+- **`RuntimeMetricsCollector`**: Aggregates live counters, latencies, and rates across LLM, Agent, Memory, Knowledge, Planner, Voice, Vision, and Plugin runtimes (`app/observability/metrics.py`).
+- **`DistributedTracer`**: Manages request-bound `trace_id` tracking and parent/child `Span` start, end, duration, and status calculation (`app/observability/tracing.py`).
+- **`EventTimelineRecorder`**: Captures chronological request step events (`app/observability/timeline.py`).
+- **`SQLiteMetricsRepository`**: Persists metrics, traces, and timeline events into SQLite (`data/jarvis.db`) with retention cleanup (`app/observability/repository.py`).
+- **`TelemetryExporterImpl`**: Renders telemetry snapshots into JSON files, CSV spreadsheets, and formatted Markdown reports (`app/observability/exporters.py`).
+- **`HealthDashboardAPI`**: Diagnostic status endpoints powering future Phase 25 Desktop GUI diagnostic panels (`app/observability/dashboard.py`).
+- **Built-in System Tools**: `get_health_report`, `get_runtime_telemetry`, `export_telemetry`.
+
+
 
 

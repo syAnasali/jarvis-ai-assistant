@@ -415,6 +415,23 @@ class Application:
         registry.register(DisablePluginTool(plugin_manager))
         registry.register(ReloadPluginTool(plugin_manager))
 
+        # Register Observability Subsystem & Tools
+        from app.observability.manager import ObservabilityManager
+        from app.tools.builtin.observability import (
+            GetHealthReportTool,
+            GetRuntimeTelemetryTool,
+            ExportTelemetryTool,
+        )
+        observability_manager = ObservabilityManager(
+            plugin_manager=plugin_manager,
+            knowledge_manager=knowledge_manager,
+            planner_manager=planner_manager
+        )
+        self.container.register("observability_manager", observability_manager)
+        registry.register(GetHealthReportTool(observability_manager))
+        registry.register(GetRuntimeTelemetryTool(observability_manager))
+        registry.register(ExportTelemetryTool(observability_manager))
+
         # 3. Create ToolExecutor with approval manager
         executor = ToolExecutor(registry, approval_manager)
 
