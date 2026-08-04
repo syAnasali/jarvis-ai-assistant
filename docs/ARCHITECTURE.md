@@ -314,6 +314,21 @@ Jarvis incorporates a production-quality PySide6 Planner Dashboard (`app/gui/pla
 - **`LiveExecutionLogsWidget`**: Real-time log stream with search filter (`app/gui/planner/execution.py`).
 - **`PlanMetricsWidget`**: Displays live Observability metrics (Success Rate, Recovery Rate, Average Duration) (`app/gui/planner/widgets.py`).
 
+---
+
+## 23. Memory & Knowledge Center (`app/gui/memory/`, `app/gui/knowledge/`)
+
+Jarvis incorporates production-quality PySide6 Memory and Knowledge Center views (`app/gui/memory/`, `app/gui/knowledge/`) visualizing multi-type long-term memories and RAG vector store documents.
+
+### Key Memory & Knowledge Architectural Components:
+- **`MemoryController` & `MemoryWorker`**: Manages memory records, search filters, and off-thread queries (`app/gui/memory/controller.py`, `app/gui/memory/worker.py`).
+- **`MemoryBrowserWidget` & `MemoryDetailsWidget`**: Table view of memories and inspector panel presenting provenance and metadata (`app/gui/memory/browser.py`, `app/gui/memory/details.py`).
+- **`KnowledgeController` & `KnowledgeWorker`**: Manages document ingestion, chunking, vector embedding, and hybrid search (`app/gui/knowledge/controller.py`, `app/gui/knowledge/worker.py`).
+- **`IngestionDropZoneWidget`**: Drag & drop target and file picker for document ingestion (`app/gui/knowledge/ingestion.py`).
+- **`KnowledgeCitationsWidget`**: RAG match card rendering composite, BM25, and vector similarity scores (`app/gui/knowledge/citations.py`).
+- **`DocumentPreviewWidget`**: Multi-format text previewer for Markdown, TXT, PDF, DOCX, and Code (`app/gui/knowledge/preview.py`).
+
+
 
 
 

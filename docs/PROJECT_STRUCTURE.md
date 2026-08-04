@@ -61,7 +61,24 @@ jarvis-ai-assistant/
 │   │   ├── citations.py              # CitationWidget rendering expandable RAG document references
 │   │   ├── controller.py             # ChatController orchestrating session history & QThread workers
 │   │   ├── markdown.py               # MarkdownRenderer converting Markdown to PySide6 Rich Text HTML
-│   │   ├── message.py                # MessageBubble, StreamingBubble, TypingIndicator, MessageListWidget
+│   │   ├── knowledge/                # Knowledge Center Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── browser.py            # KnowledgeBrowserWidget table view of indexed documents
+│   │   │   ├── citations.py          # KnowledgeCitationsWidget score breakdowns & snippets
+│   │   │   ├── controller.py         # KnowledgeController managing ingestion & KnowledgeWorker
+│   │   │   ├── ingestion.py          # IngestionDropZoneWidget drag & drop target
+│   │   │   ├── preview.py            # DocumentPreviewWidget multi-format previewer
+│   │   │   ├── search.py             # KnowledgeSearchWidget hybrid vector + BM25 search bar
+│   │   │   └── worker.py             # KnowledgeWorker QThread running ingestion & search off-thread
+│   │   ├── memory/                   # Memory Center Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── browser.py            # MemoryBrowserWidget table view of memory records
+│   │   │   ├── controller.py         # MemoryController managing CRUD operations & MemoryWorker
+│   │   │   ├── details.py            # MemoryDetailsWidget inspector panel
+│   │   │   ├── editor.py             # MemoryEditorWidget modal dialog
+│   │   │   ├── filters.py            # MemoryFilterWidget dropdown filters
+│   │   │   ├── search.py             # MemorySearchWidget search bar
+│   │   │   └── worker.py             # MemoryWorker QThread running memory queries off-thread
 │   │   ├── planner/                  # Planner Dashboard Subsystem
 │   │   │   ├── __init__.py           # Package exports
 │   │   │   ├── controller.py         # PlannerController managing DAG graph & PlannerWorker
