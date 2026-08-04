@@ -1,0 +1,10 @@
+id: calculator
+name: Calculator Plugin
+version: 1.0.0
+author: Jarvis Team
+description: Safe arithmetic calculation tool plugin.
+entrypoint: main.py:CalculatorPlugin
+permissions:
+  - confirmation
+tools:
+  - calculate_expression

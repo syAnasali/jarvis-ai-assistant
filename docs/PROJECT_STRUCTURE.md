@@ -67,6 +67,19 @@ jarvis-ai-assistant/
 │   │   ├── reranker.py               # ResultRerankerEngine scoring candidate matches & diversity
 │   │   ├── repository.py             # SQLiteKnowledgeRepository implementation (data/jarvis.db)
 │   │   └── retriever.py              # HybridRetrieverEngine combining vector similarity & BM25 keyword search
+│   ├── plugins/                      # Provider-Neutral Plugin SDK & Extension Framework
+│   │   ├── __init__.py               # Package exports
+│   │   ├── events.py                 # PluginEventBus thread-safe publish/subscribe event bus
+│   │   ├── exceptions.py             # Plugin exception hierarchy
+│   │   ├── interfaces.py             # Plugin abstract base class & contracts
+│   │   ├── lifecycle.py              # PluginLifecycleCoordinator handling startup & shutdown
+│   │   ├── loader.py                 # DynamicPluginLoader with topological dependency sorting
+│   │   ├── manager.py                # PluginManager handling load, unload, reload, enable, disable
+│   │   ├── manifest.py               # PluginManifestParser & validator for plugin.yaml/json
+│   │   ├── models.py                 # PluginManifest, PluginStatus, PluginPermission, PluginInfo, PluginEvent
+│   │   ├── registry.py               # PluginRegistry catalog
+│   │   ├── sandbox.py                # PluginPermissionSandbox enforcing permission boundaries
+│   │   └── sdk.py                    # JarvisPluginSDK facade exposing safe APIs
 │   ├── memory/                       # Persistent Multi-Type Memory Subsystem
 │   │   ├── __init__.py
 │   │   ├── context.py                # MemoryContextBuilder for prompt formatting

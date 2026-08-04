@@ -394,6 +394,27 @@ class Application:
         registry.register(ListDocumentsTool(knowledge_manager))
         registry.register(RemoveDocumentTool(knowledge_manager))
 
+        # Register Provider-Neutral Plugin SDK & Manager
+        from app.plugins.manager import PluginManager
+        from app.tools.builtin.plugin import (
+            ListPluginsTool,
+            EnablePluginTool,
+            DisablePluginTool,
+            ReloadPluginTool,
+        )
+        plugin_manager = PluginManager(
+            tool_registry=registry,
+            memory_manager=memory_manager,
+            vision_pipeline=vision_manager.pipeline,
+            knowledge_manager=knowledge_manager,
+            planner_manager=planner_manager
+        )
+        self.container.register("plugin_manager", plugin_manager)
+        registry.register(ListPluginsTool(plugin_manager))
+        registry.register(EnablePluginTool(plugin_manager))
+        registry.register(DisablePluginTool(plugin_manager))
+        registry.register(ReloadPluginTool(plugin_manager))
+
         # 3. Create ToolExecutor with approval manager
         executor = ToolExecutor(registry, approval_manager)
 

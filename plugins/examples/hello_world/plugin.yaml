@@ -1,0 +1,10 @@
+id: hello_world
+name: Hello World Plugin
+version: 1.0.0
+author: Jarvis Team
+description: Basic greeting & event listener example plugin.
+entrypoint: main.py:HelloWorldPlugin
+permissions:
+  - confirmation
+tools:
+  - hello_world_tool

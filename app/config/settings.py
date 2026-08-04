@@ -108,6 +108,11 @@ class Settings(BaseSettings):
     default_chunk_strategy: str = "recursive"
     hybrid_alpha: float = 0.7
 
+    plugins_enabled: bool = True
+    plugins_directory: str = "plugins"
+    plugins_allow_hot_reload: bool = True
+    plugins_strict_permissions: bool = True
+
 
     @classmethod
     def validate_relationships(cls, values: dict) -> None:

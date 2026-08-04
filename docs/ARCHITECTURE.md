@@ -224,4 +224,20 @@ Jarvis incorporates a provider-neutral Personal Knowledge Base (`app/knowledge/`
 - **Memory Isolation Safeguard**: Retrieved RAG document chunks are strictly isolated and never automatically saved to long-term memory.
 - **Built-in System Tools**: `ingest_document`, `search_knowledge`, `summarize_document`, `list_documents`, `remove_document`.
 
+---
+
+## 17. Provider-Neutral Plugin SDK & Extension Framework (`app/plugins/`)
+
+Jarvis incorporates an isolated, provider-neutral Plugin SDK (`app/plugins/`) allowing external extensions, tools, voice commands, and event subscribers to be added without modifying core codebase files.
+
+### Key Plugin Architectural Components:
+- **`PluginManifestParser`**: Parses and validates `plugin.yaml` or `plugin.json` manifests (`app/plugins/manifest.py`).
+- **`PluginPermissionSandbox`**: Enforces strict permission boundaries (`filesystem`, `desktop`, `voice`, `vision`, `knowledge`, `planner`, `network`, `memory`, `confirmation`) (`app/plugins/sandbox.py`).
+- **`JarvisPluginSDK`**: Isolated API facade exposing safe capability access (`sdk.tools`, `sdk.memory`, `sdk.voice`, `sdk.vision`, `sdk.knowledge`, `sdk.planner`, `sdk.events`, `sdk.logger`, `sdk.settings`) (`app/plugins/sdk.py`).
+- **`PluginEventBus`**: Thread-safe publish/subscribe event engine for lifecycle and execution events (`app/plugins/events.py`).
+- **`DynamicPluginLoader`**: Topological dependency sorting and fault-isolated module loading (`app/plugins/loader.py`).
+- **`PluginManager`**: Catalog registry, enabling/disabling, health reporting, and runtime `reload_plugin(plugin_id)` hot reloading (`app/plugins/manager.py`).
+- **Built-in System Tools**: `list_plugins`, `enable_plugin`, `disable_plugin`, `reload_plugin`.
+
+
 

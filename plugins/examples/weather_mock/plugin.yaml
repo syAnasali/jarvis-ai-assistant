@@ -1,0 +1,10 @@
+id: weather_mock
+name: Weather Mock Plugin
+version: 1.0.0
+author: Jarvis Team
+description: Mock weather forecast tool plugin.
+entrypoint: main.py:WeatherMockPlugin
+permissions:
+  - confirmation
+tools:
+  - get_weather_forecast

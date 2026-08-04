@@ -1,0 +1,10 @@
+id: system_monitor
+name: System Monitor Plugin
+version: 1.0.0
+author: Jarvis Team
+description: CPU & Memory telemetry tool plugin.
+entrypoint: main.py:SystemMonitorPlugin
+permissions:
+  - confirmation
+tools:
+  - get_system_telemetry
