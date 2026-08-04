@@ -328,6 +328,21 @@ Jarvis incorporates production-quality PySide6 Memory and Knowledge Center views
 - **`KnowledgeCitationsWidget`**: RAG match card rendering composite, BM25, and vector similarity scores (`app/gui/knowledge/citations.py`).
 - **`DocumentPreviewWidget`**: Multi-format text previewer for Markdown, TXT, PDF, DOCX, and Code (`app/gui/knowledge/preview.py`).
 
+---
+
+## 24. Plugin Manager Workspace (`app/gui/plugins/`)
+
+Jarvis incorporates a production-quality PySide6 Plugin Manager Workspace (`app/gui/plugins/`) managing installed extensions, permissions sandboxing, and hot-reloading.
+
+### Key Plugin Manager Architectural Components:
+- **`PluginController` & `PluginWorker`**: Manages plugin lifecycle, enabling/disabling, reloading, and off-thread execution (`app/gui/plugins/controller.py`, `app/gui/plugins/worker.py`).
+- **`PluginBrowserWidget`**: Table view of installed plugins, versions, health status, and quick action buttons (`app/gui/plugins/browser.py`).
+- **`PluginDetailsWidget`**: Inspector panel presenting manifest details, capabilities, and registered hooks (`app/gui/plugins/details.py`).
+- **`PluginPermissionsWidget`**: Security permission viewer displaying color-coded risk tags (`app/gui/plugins/permissions.py`).
+- **`PluginMarketplaceWidget`**: UI catalog placeholder preparing online plugin discovery (`app/gui/plugins/marketplace.py`).
+- **`PluginLogsWidget`**: Real-time plugin lifecycle execution logs (`app/gui/plugins/logs.py`).
+
+
 
 
 

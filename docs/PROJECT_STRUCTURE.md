@@ -89,6 +89,15 @@ jarvis-ai-assistant/
 │   │   │   ├── timeline.py           # ExecutionTimelineWidget chronological step timeline
 │   │   │   ├── widgets.py            # PlanMetricsWidget & PlanCardWidget summaries
 │   │   │   └── worker.py             # PlannerWorker QThread executing DAG nodes off-thread
+│   │   ├── plugins/                  # Plugin Manager Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── browser.py            # PluginBrowserWidget table of installed plugins
+│   │   │   ├── controller.py         # PluginController managing plugin states & PluginWorker
+│   │   │   ├── details.py            # PluginDetailsWidget manifest inspector
+│   │   │   ├── logs.py               # PluginLogsWidget plugin lifecycle log stream
+│   │   │   ├── marketplace.py        # PluginMarketplaceWidget catalog placeholder
+│   │   │   ├── permissions.py        # PluginPermissionsWidget declared permissions viewer
+│   │   │   └── worker.py             # PluginWorker QThread executing plugin actions off-thread
 │   │   ├── vision/                   # Vision Workspace Subsystem
 │   │   │   ├── __init__.py           # Package exports
 │   │   │   ├── annotations.py        # AnnotationLayerWidget for OCR bounding box overlays
