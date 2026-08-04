@@ -53,6 +53,18 @@ jarvis-ai-assistant/
 │   │   ├── exceptions.py             # Custom JarvisError exception hierarchy
 │   │   ├── lifecycle.py              # ApplicationState enum
 │   │   └── logger.py                 # Loguru log setup handlers
+│   ├── gui/                          # PySide6 Desktop GUI Foundation Subsystem
+│   │   ├── __init__.py               # Package exports
+│   │   ├── app.py                    # JarvisGuiApplication PySide6 bootstrapper
+│   │   ├── dialogs.py                # ConfirmationDialog, ErrorDialog, AboutDialog
+│   │   ├── icons.py                  # IconManager generating vector and procedural icons
+│   │   ├── main_window.py            # MainWindow application shell layout
+│   │   ├── navigation.py             # NavigationManager managing view index routing
+│   │   ├── resources.py              # ResourceLoader managing asset paths
+│   │   ├── settings.py               # GuiSettingsManager persisting QSettings
+│   │   ├── theme.py                  # ThemeManager supporting Dark/Light QSS stylesheets
+│   │   ├── views/                    # 9 Registered page views (Chat, Planner, Memory, etc.)
+│   │   └── widgets/                  # SidebarNav, TopToolbar, StatusBarNav, ToastNotification
 │   ├── knowledge/                    # Personal Knowledge Base (RAG) Subsystem
 │   │   ├── __init__.py               # Package exports & factory constructors
 │   │   ├── chunker.py                # ConfigurableTextChunker (Paragraph, Semantic, Recursive, Code-Aware)

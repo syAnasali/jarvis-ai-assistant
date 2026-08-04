@@ -254,6 +254,22 @@ Jarvis incorporates a production-quality Observability subsystem (`app/observabi
 - **`HealthDashboardAPI`**: Diagnostic status endpoints powering future Phase 25 Desktop GUI diagnostic panels (`app/observability/dashboard.py`).
 - **Built-in System Tools**: `get_health_report`, `get_runtime_telemetry`, `export_telemetry`.
 
+---
+
+## 19. Desktop GUI Foundation (`app/gui/`)
+
+Jarvis incorporates a production-quality PySide6 desktop application shell (`app/gui/`) consuming existing backend Application and Observability APIs.
+
+### Key GUI Architectural Components:
+- **`JarvisGuiApplication`**: PySide6 `QApplication` bootstrapper, theme applicator, and event loop runner (`app/gui/app.py`).
+- **`MainWindow`**: Main application shell assembling `SidebarNav`, `TopToolbar`, `QStackedWidget` navigation stack, and `StatusBarNav` (`app/gui/main_window.py`).
+- **`NavigationManager`**: Page routing manager managing index switching across all 9 registered views (`app/gui/navigation.py`).
+- **`SidebarNav` & `TopToolbar`**: Collapsible sidebar menu and top action bar (`app/gui/widgets/sidebar.py`, `app/gui/widgets/toolbar.py`).
+- **`StatusBarNav`**: Telemetry status bar displaying model, provider, active session, memory count, plugin count, and system status (`app/gui/widgets/status_bar.py`).
+- **`ThemeManager`**: Dark and light mode QSS stylesheets with HSL color tokens (`app/gui/theme.py`).
+- **`GuiSettingsManager`**: Persists window geometry, active page, and theme preferences via `QSettings` (`app/gui/settings.py`).
+
+
 
 
 
