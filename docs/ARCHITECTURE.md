@@ -269,6 +269,22 @@ Jarvis incorporates a production-quality PySide6 desktop application shell (`app
 - **`ThemeManager`**: Dark and light mode QSS stylesheets with HSL color tokens (`app/gui/theme.py`).
 - **`GuiSettingsManager`**: Persists window geometry, active page, and theme preferences via `QSettings` (`app/gui/settings.py`).
 
+---
+
+## 20. Chat Interface & Streaming Experience (`app/gui/chat/`)
+
+Jarvis incorporates a production-quality PySide6 Chat Interface (`app/gui/chat/`) consuming backend LLM streaming, Tool, Memory, and Planner runtimes via thread-safe `QThread` workers.
+
+### Key Chat Architectural Components:
+- **`ChatController`**: Manages active `ConversationSession` history and QThread worker invocation (`app/gui/chat/controller.py`).
+- **`ChatWorker`**: PySide6 `QThread` executing backend prompt generation off the main UI thread and emitting signals (`app/gui/chat/worker.py`).
+- **`StreamingHandler`**: Manages real-time token updates to `StreamingBubble` without blocking PySide6 event loop (`app/gui/chat/streaming.py`).
+- **`MarkdownRenderer`**: Converts Markdown to PySide6 Rich Text HTML (`app/gui/chat/markdown.py`).
+- **`CodeBlockWidget`**: Monospace code container with syntax highlighting, language badges, and copy buttons (`app/gui/chat/syntax.py`).
+- **`CitationWidget`**: Expandable RAG document citation cards with clickable `file:///` scheme links (`app/gui/chat/citations.py`).
+- **`AttachmentBar`**: Multi-file attachment intake supporting images, documents, clipboard pasting, and drag & drop (`app/gui/chat/attachments.py`).
+
+
 
 
 

@@ -55,7 +55,17 @@ jarvis-ai-assistant/
 │   │   └── logger.py                 # Loguru log setup handlers
 │   ├── gui/                          # PySide6 Desktop GUI Foundation Subsystem
 │   │   ├── __init__.py               # Package exports
-│   │   ├── app.py                    # JarvisGuiApplication PySide6 bootstrapper
+│   │   ├── chat/                     # Chat Interface & Streaming Experience Subsystem
+│   │   ├── __init__.py               # Package exports
+│   │   ├── attachments.py            # AttachmentWidget and AttachmentBar for file intake
+│   │   ├── citations.py              # CitationWidget rendering expandable RAG document references
+│   │   ├── controller.py             # ChatController orchestrating session history & QThread workers
+│   │   ├── markdown.py               # MarkdownRenderer converting Markdown to PySide6 Rich Text HTML
+│   │   ├── message.py                # MessageBubble, StreamingBubble, TypingIndicator, MessageListWidget
+│   │   ├── models.py                 # ChatMessage, MessageType, AttachmentInfo, ConversationSession
+│   │   ├── streaming.py              # StreamingHandler updating real-time tokens
+│   │   ├── syntax.py                 # CodeBlockWidget with language badge and copy button
+│   │   └── worker.py                 # ChatWorker QThread running backend generation off UI thread
 │   │   ├── dialogs.py                # ConfirmationDialog, ErrorDialog, AboutDialog
 │   │   ├── icons.py                  # IconManager generating vector and procedural icons
 │   │   ├── main_window.py            # MainWindow application shell layout
