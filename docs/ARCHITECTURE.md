@@ -342,6 +342,23 @@ Jarvis incorporates a production-quality PySide6 Plugin Manager Workspace (`app/
 - **`PluginMarketplaceWidget`**: UI catalog placeholder preparing online plugin discovery (`app/gui/plugins/marketplace.py`).
 - **`PluginLogsWidget`**: Real-time plugin lifecycle execution logs (`app/gui/plugins/logs.py`).
 
+---
+
+## 25. Observability Dashboard (`app/gui/observability/`)
+
+Jarvis incorporates a production-quality PySide6 Observability Dashboard (`app/gui/observability/`) presenting live telemetry metrics, distributed tracing trees, request timelines, and report exports.
+
+### Key Observability Architectural Components:
+- **`ObservabilityController` & `ObservabilityWorker`**: Manages QTimer auto-refresh loop, metrics aggregation, and off-thread report exports (`app/gui/observability/controller.py`, `app/gui/observability/worker.py`).
+- **`HealthOverviewWidget`**: Presents health status badges for all 8 core subsystems (`app/gui/observability/health.py`).
+- **`MetricsGridWidget`**: Counter cards displaying Tokens/sec, Average Latency, Active Requests, Queue Depth, RAM Usage, and CPU Load (`app/gui/observability/metrics.py`).
+- **`TelemetryChartsWidget`**: Animated live trend curves for request latency and token throughput (`app/gui/observability/charts.py`).
+- **`TraceTreeWidget`**: Distributed trace tree presenting parent/child span operations, durations, and statuses (`app/gui/observability/traces.py`).
+- **`TimelineViewWidget`**: Chronological request execution timeline (`app/gui/observability/timeline.py`).
+- **`RequestDetailsWidget`**: Inspector panel displaying request trace properties (`app/gui/observability/requests.py`).
+- **`ExportTelemetryDialog`**: Modal dialog for exporting telemetry to JSON, CSV, and Markdown (`app/gui/observability/export.py`).
+
+
 
 
 

@@ -77,8 +77,17 @@ jarvis-ai-assistant/
 │   │   │   ├── details.py            # MemoryDetailsWidget inspector panel
 │   │   │   ├── editor.py             # MemoryEditorWidget modal dialog
 │   │   │   ├── filters.py            # MemoryFilterWidget dropdown filters
-│   │   │   ├── search.py             # MemorySearchWidget search bar
-│   │   │   └── worker.py             # MemoryWorker QThread running memory queries off-thread
+│   │   ├── observability/            # Observability Dashboard Subsystem
+│   │   │   ├── __init__.py           # Package exports
+│   │   │   ├── charts.py             # TelemetryChartsWidget live QPainter trend curves
+│   │   │   ├── controller.py         # ObservabilityController managing QTimer refresh & ObservabilityWorker
+│   │   │   ├── export.py             # ExportTelemetryDialog JSON/CSV/Markdown report dialog
+│   │   │   ├── health.py             # HealthOverviewWidget 8-subsystem status grid
+│   │   │   ├── metrics.py            # MetricsGridWidget live telemetry counter cards
+│   │   │   ├── requests.py           # RequestDetailsWidget trace inspector
+│   │   │   ├── timeline.py           # TimelineViewWidget chronological request timeline
+│   │   │   ├── traces.py             # TraceTreeWidget distributed tracing span tree
+│   │   │   └── worker.py             # ObservabilityWorker QThread executing telemetry collection
 │   │   ├── planner/                  # Planner Dashboard Subsystem
 │   │   │   ├── __init__.py           # Package exports
 │   │   │   ├── controller.py         # PlannerController managing DAG graph & PlannerWorker
