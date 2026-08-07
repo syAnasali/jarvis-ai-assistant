@@ -372,6 +372,20 @@ Jarvis incorporates a production-quality PySide6 Native Approval Center (`app/gu
 - **`ApprovalHistoryWidget`**: Log table recording historical approval decisions and execution statuses (`app/gui/approval/history.py`).
 - **`ApprovalDetailsWidget`**: Inspector panel displaying tool parameters and risk evaluation (`app/gui/approval/details.py`).
 
+---
+
+## 27. Production Polish & UX Refinement (`app/gui/`)
+
+Jarvis incorporates comprehensive desktop UI polish, productivity hotkeys, session auto-restoration, high-DPI display scaling, and smooth page transition animations.
+
+### Key Polish Architectural Components:
+- **`CommandPaletteDialog`**: Modal popup dialog triggered via `Ctrl+Shift+P` for instant keyboard navigation and action execution (`app/gui/command_palette.py`).
+- **`PageTransitionManager`**: Applies smooth `QGraphicsOpacityEffect` cross-fade animations between views (`app/gui/animations.py`).
+- **`GlobalShortcutManager`**: Binds application-wide hotkeys (`Ctrl+Shift+P`, `Ctrl+T`, `F11`) (`app/gui/shortcuts.py`).
+- **`SessionRestoreManager`**: Auto-saves active view state, layout geometry, and input drafts (`app/gui/session.py`).
+- **Expanded `SettingsView`**: 5-tab workspace managing Appearance, Behavior, Voice/Vision, Plugins/Privacy, and Performance (`app/gui/views/settings_view.py`).
+
+
 
 
 

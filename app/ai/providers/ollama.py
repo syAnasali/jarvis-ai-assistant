@@ -177,10 +177,29 @@ class OllamaProvider(BaseLLMProvider):
             kwargs["tools"] = adapted
 
         try:
+            # Sanitize messages to standard role/content dict format expected by Ollama Client
+            sanitized_messages = []
+            for msg in messages:
+                if isinstance(msg, dict):
+                    role = msg.get("role") or msg.get("message_type") or "user"
+                    role_str = str(role).split(".")[-1].lower()
+                    if role_str in ("human", "user"):
+                        role_str = "user"
+                    elif role_str in ("bot", "assistant"):
+                        role_str = "assistant"
+                    elif role_str in ("system",):
+                        role_str = "system"
+                    else:
+                        role_str = "user"
+                    content = str(msg.get("content", ""))
+                    sanitized_messages.append({"role": role_str, "content": content})
+                else:
+                    sanitized_messages.append({"role": "user", "content": str(msg)})
+
             with self._lock:
                 response = self._client.chat(
                     model=self._model,
-                    messages=messages,
+                    messages=sanitized_messages,
                     **kwargs
                 )
             

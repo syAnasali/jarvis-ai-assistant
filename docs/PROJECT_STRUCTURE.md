@@ -54,6 +54,10 @@ jarvis-ai-assistant/
 │   │   ├── lifecycle.py              # ApplicationState enum
 │   │   └── logger.py                 # Loguru log setup handlers
 │   ├── gui/                          # PySide6 Desktop GUI Foundation Subsystem
+│   │   ├── animations.py             # PageTransitionManager for smooth QGraphicsOpacityEffect cross-fades
+│   │   ├── command_palette.py        # CommandPaletteDialog for Ctrl+Shift+P quick action launcher
+│   │   ├── session.py                # SessionRestoreManager for auto-saving drafts and window geometry
+│   │   ├── shortcuts.py              # GlobalShortcutManager for application-wide hotkeys
 │   │   ├── approval/                 # Native Approval Center Subsystem
 │   │   │   ├── __init__.py           # Package exports
 │   │   │   ├── controller.py         # ApprovalController managing pending queue & ApprovalWorker

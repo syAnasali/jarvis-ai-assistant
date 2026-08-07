@@ -5,6 +5,7 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
+    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -89,6 +90,117 @@ class MessageBubble(QWidget):
         lbl_content.setWordWrap(True)
         lbl_content.setOpenExternalLinks(True)
         card_layout.addWidget(lbl_content)
+
+        # Interactive Approval Action Bar for confirmation required messages
+        if message.message_type == MessageType.APPROVAL or "requires confirmation" in message.content or "PendingAction ID:" in message.content:
+            import re
+            action_match = re.search(r'PendingAction ID:\s*`?([a-zA-Z0-9_\-]+)`?', message.content)
+            action_id = action_match.group(1) if action_match else "action_pending"
+
+            btn_row = QHBoxLayout()
+            btn_row.setContentsMargins(0, 8, 0, 0)
+            btn_row.setSpacing(10)
+
+            btn_approve = QPushButton("✅ Approve Execution")
+            btn_approve.setCursor(Qt.PointingHandCursor)
+            btn_approve.setStyleSheet("""
+                QPushButton {
+                    background-color: #065f46;
+                    color: #34d399;
+                    font-weight: 700;
+                    border: 1px solid #059669;
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #047857;
+                    color: #ffffff;
+                }
+            """)
+
+            btn_reject = QPushButton("❌ Reject")
+            btn_reject.setCursor(Qt.PointingHandCursor)
+            btn_reject.setStyleSheet("""
+                QPushButton {
+                    background-color: #7f1d1d;
+                    color: #fca5a5;
+                    font-weight: 600;
+                    border: 1px solid #991b1b;
+                    border-radius: 6px;
+                    padding: 6px 14px;
+                }
+                QPushButton:hover {
+                    background-color: #991b1b;
+                    color: #ffffff;
+                }
+            """)
+
+            def _on_approved():
+                btn_approve.setEnabled(False)
+                btn_reject.setEnabled(False)
+                btn_approve.setText("✅ Approved")
+                btn_approve.setStyleSheet("background-color: #047857; color: #ffffff; border-radius: 6px; padding: 6px 14px; font-weight: 700;")
+                from PySide6.QtWidgets import QApplication
+                app_inst = QApplication.instance()
+                if app_inst:
+                    for widget in app_inst.topLevelWidgets():
+                        if hasattr(widget, "approval_ctrl"):
+                            widget.approval_ctrl.resolve_action("APPROVED", action_id)
+
+            def _on_rejected():
+                btn_approve.setEnabled(False)
+                btn_reject.setEnabled(False)
+                btn_reject.setText("❌ Rejected")
+                btn_reject.setStyleSheet("background-color: #991b1b; color: #ffffff; border-radius: 6px; padding: 6px 14px;")
+                from PySide6.QtWidgets import QApplication
+                app_inst = QApplication.instance()
+                if app_inst:
+                    for widget in app_inst.topLevelWidgets():
+                        if hasattr(widget, "approval_ctrl"):
+                            widget.approval_ctrl.resolve_action("rejected", action_id)
+
+            btn_approve.clicked.connect(_on_approved)
+            btn_reject.clicked.connect(_on_rejected)
+
+            btn_row.addWidget(btn_approve)
+            btn_row.addWidget(btn_reject)
+            btn_row.addStretch()
+            card_layout.addLayout(btn_row)
+
+        # Render Attachments
+        if message.attachments:
+            from pathlib import Path
+            from PySide6.QtGui import QPixmap
+            att_row = QHBoxLayout()
+            att_row.setContentsMargins(0, 4, 0, 0)
+            att_row.setSpacing(6)
+            for att in message.attachments:
+                fname = getattr(att, "filename", str(att))
+                fpath = getattr(att, "file_path", "")
+                fsize = getattr(att, "file_size_bytes", 0)
+
+                # Image thumbnail preview check
+                if fpath and Path(fpath).suffix.lower() in (".png", ".jpg", ".jpeg", ".bmp", ".webp") and Path(fpath).exists():
+                    img_card = QWidget()
+                    img_layout = QVBoxLayout(img_card)
+                    img_layout.setContentsMargins(0, 4, 0, 4)
+                    lbl_img = QLabel()
+                    pix = QPixmap(fpath)
+                    if not pix.isNull():
+                        lbl_img.setPixmap(pix.scaledToWidth(220, Qt.SmoothTransformation))
+                        img_layout.addWidget(lbl_img)
+                    lbl_tag = QLabel(f"🖼️ {fname}")
+                    lbl_tag.setStyleSheet("color: #38bdf8; font-size: 11px; font-weight: bold;")
+                    img_layout.addWidget(lbl_tag)
+                    card_layout.addWidget(img_card)
+                else:
+                    size_str = f" ({fsize // 1024} KB)" if fsize > 1024 else (f" ({fsize} B)" if fsize > 0 else "")
+                    lbl_att = QLabel(f"📎 {fname}{size_str}")
+                    lbl_att.setStyleSheet("background-color: #242838; color: #38bdf8; border: 1px solid #3b82f6; border-radius: 4px; padding: 4px 8px; font-size: 11px;")
+                    att_row.addWidget(lbl_att)
+            if att_row.count() > 0:
+                att_row.addStretch()
+                card_layout.addLayout(att_row)
 
         # Render Citations
         if message.citations:

@@ -18,8 +18,20 @@ class JarvisGuiApplication:
         self.args = args or sys.argv
         self.app = QApplication.instance() or QApplication(self.args)
 
+        # Bootstraps backend application services container
+        self.backend_app = None
+        try:
+            from app.core.application import Application
+            self.backend_app = Application()
+            self.backend_app.initialize()
+            self.backend_app._initialize_llm()
+            self.backend_app._initialize_agent()
+            logger.info("Successfully bootstrapped backend Application container for Desktop GUI.")
+        except Exception as ex:
+            logger.warning(f"Backend Application container running in lightweight mode: {ex}")
+
         self.settings_mgr = GuiSettingsManager()
-        self.main_window = MainWindow(settings_manager=self.settings_mgr)
+        self.main_window = MainWindow(settings_manager=self.settings_mgr, app_container=self.backend_app)
 
         # Apply saved theme
         saved_theme = self.settings_mgr.get_theme()
@@ -30,3 +42,9 @@ class JarvisGuiApplication:
         logger.info("Starting Jarvis Desktop GUI Application event loop...")
         self.main_window.show()
         return self.app.exec()
+
+
+if __name__ == "__main__":
+    gui_app = JarvisGuiApplication()
+    sys.exit(gui_app.run())
+

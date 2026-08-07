@@ -52,6 +52,7 @@ class AttachmentBar(QWidget):
         self.layout.setContentsMargins(0, 0, 0, 0)
         self.layout.setSpacing(6)
         self.layout.addStretch()
+        self.setVisible(False)
 
     def add_attachment(self, file_path: str) -> None:
         """Adds a file attachment by local path."""
@@ -69,6 +70,7 @@ class AttachmentBar(QWidget):
         badge = AttachmentWidget(info, parent=self)
         badge.remove_requested.connect(self._remove_attachment)
         self.layout.insertWidget(self.layout.count() - 1, badge)
+        self.setVisible(True)
         self.attachments_changed.emit(self.attachments)
 
     def _remove_attachment(self, info: AttachmentInfo) -> None:
@@ -81,6 +83,7 @@ class AttachmentBar(QWidget):
                 badge = AttachmentWidget(att, parent=self)
                 badge.remove_requested.connect(self._remove_attachment)
                 self.layout.insertWidget(self.layout.count() - 1, badge)
+            self.setVisible(len(self.attachments) > 0)
 
     def clear_ui(self) -> None:
         """Clears all badges from UI."""
@@ -93,4 +96,5 @@ class AttachmentBar(QWidget):
         """Clears all attachments."""
         self.attachments.clear()
         self.clear_ui()
+        self.setVisible(False)
         self.attachments_changed.emit(self.attachments)

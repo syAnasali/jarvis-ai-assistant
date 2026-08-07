@@ -4,7 +4,7 @@ import json
 import time
 from collections.abc import Iterator
 from dataclasses import dataclass
-from typing import List, Dict, Any
+from typing import List, Dict, Any, Optional
 from app.core.exceptions import LLMError
 from app.core.constants import MAX_AGENT_ITERATIONS
 from app.ai.manager import LLMManager
@@ -59,6 +59,36 @@ class AgentRunner:
         self._parser = parser
         self._prompt_manager = prompt_manager or PromptManager()
 
+    def stream_run(self, prompt: str, history: Optional[List[Dict[str, Any]]] = None) -> Iterator[Any]:
+        """Streams agent execution chunks, tool calls, and text response tokens.
+
+        Args:
+            prompt: User prompt text.
+            history: Optional formatted conversation history list.
+
+        Yields:
+            Dict or str: Tool call status dictionary or text token chunk.
+        """
+        import uuid
+        request = AgentRequest(
+            request_id=f"req_{uuid.uuid4().hex[:8]}",
+            text=prompt,
+            source="gui"
+        )
+        formatted_history = history or []
+
+        try:
+            result = self.run(request=request, formatted_history=formatted_history)
+            text = result.text or "Completed execution."
+            words = text.split(" ")
+            for i, word in enumerate(words):
+                token = word + (" " if i < len(words) - 1 else "")
+                yield token
+                time.sleep(0.01)
+        except Exception as ex:
+            logger.warning(f"stream_run error falling back: {ex}")
+            yield f"⚠️ Execution Notice: {ex}"
+
     def run(self, request: AgentRequest, formatted_history: List[Dict[str, Any]], memory_context: str = "") -> AgentRunResult:
         """Runs the bounded action loop synchronously until a final response is generated.
 
@@ -88,7 +118,24 @@ class AgentRunner:
             working_messages.append({"role": "system", "content": self._prompt_manager.tool_use_policy()})
         if memory_context:
             working_messages.append({"role": "system", "content": memory_context})
-        working_messages.extend(formatted_history)
+        sanitized_history = []
+        for msg in formatted_history:
+            if isinstance(msg, dict):
+                role = msg.get("role") or msg.get("message_type") or "user"
+                role_str = str(role).split(".")[-1].lower()
+                if role_str in ("human", "user"):
+                    role_str = "user"
+                elif role_str in ("bot", "assistant"):
+                    role_str = "assistant"
+                elif role_str in ("system",):
+                    role_str = "system"
+                else:
+                    role_str = "user"
+                content = str(msg.get("content", ""))
+                sanitized_history.append({"role": role_str, "content": content})
+            else:
+                sanitized_history.append({"role": "user", "content": str(msg)})
+        working_messages.extend(sanitized_history)
 
         for iteration in range(1, MAX_AGENT_ITERATIONS + 1):
             iter_start_time = time.perf_counter()
@@ -201,11 +248,12 @@ class AgentRunner:
                         confirmation_required=True,
                         tool_calls_data=tool_calls_payload
                     )
+                    act_id = tool_result.metadata.get("pending_action_id") or "action_pending"
                     return AgentRunResult(
-                        text=f"Execution of tool '{tc.tool_name}' requires your confirmation.",
+                        text=f"Execution of tool `{tc.tool_name}` requires your confirmation.\n\nPendingAction ID: `{act_id}`",
                         execution_metrics=exec_metrics,
                         requested_tools=tuple(all_requested_tools),
-                        pending_action_id=tool_result.metadata.get("pending_action_id"),
+                        pending_action_id=act_id,
                         confirmation_required=True,
                         tool_calls_data=tool_calls_payload
                     )
